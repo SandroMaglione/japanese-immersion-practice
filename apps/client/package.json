@@ -1,0 +1,32 @@
+{
+  "name": "@jip/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1",
+    "preview": "vite preview --host 127.0.0.1",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@jip/indexeddb": "workspace:^",
+    "@jip/machines": "workspace:^",
+    "@tanstack/react-router": "1.170.16",
+    "@xstate/react": "7.0.0-alpha.1",
+    "effect": "4.0.0-beta.92",
+    "lucide-react": "1.22.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "xstate": "6.0.0-alpha.12"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.2",
+    "@tanstack/router-plugin": "1.168.18",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.3",
+    "tailwindcss": "4.3.2",
+    "vite": "8.1.0"
+  }
+}

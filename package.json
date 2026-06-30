@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "pnpm --filter @jip/client dev",
     "format": "oxfmt",
     "test": "pnpm -r --if-present test",
     "typecheck": "pnpm -r typecheck",
