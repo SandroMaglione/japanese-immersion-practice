@@ -1,0 +1,103 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "jsPlugins": ["@jip/oxc/oxlint"],
+  "ignorePatterns": [
+    "**/scripts/**",
+    ".repos/**",
+    "references/**",
+    "local/**",
+    "*.js",
+    "*.jsx",
+    "*.mjs",
+    "*.cjs",
+    "*.mts",
+    "*.cts",
+    "*.astro",
+    "*.svelte",
+    "*.vue"
+  ],
+  "rules": {
+    "jip/no-banned-type-assertions": "error",
+    "jip/no-comments": "error",
+    "jip/no-direct-browser-storage": "error",
+    "jip/no-direct-fetch": "error",
+    "jip/no-disable-validation": "error",
+    "jip/no-effect-asvoid": "warn",
+    "jip/no-effect-catch-cause": "error",
+    "jip/no-effect-ignore": "error",
+    "jip/no-global-json": "error",
+    "jip/no-in-operator": "error",
+    "jip/no-multiple-function-params": "error",
+    "jip/no-nested-effect-array-methods": "error",
+    "jip/no-nested-layer-provide": "warn",
+    "jip/no-optional-function-parameters": "error",
+    "jip/no-service-option": "error",
+    "jip/no-shadowed-standard-array-static": "error",
+    "jip/no-silent-error-swallow": "error",
+    "jip/no-single-use-private-functions": "error",
+    "jip/no-standard-map-set": "error",
+    "jip/no-switch": "error",
+    "jip/no-sync-schema-apis": "error",
+    "jip/no-typeof-object": "error",
+    "jip/no-type-assertion": "error",
+    "jip/no-try-catch": "error",
+    "jip/pipe-max-arguments": "warn",
+    "jip/prefer-option-from-nullable": "warn",
+    "jip/private-function-prefix": "error",
+    "unicorn/filename-case": ["error", { "case": "kebabCase" }],
+    "no-console": "error",
+    "no-empty": "error",
+    "no-eq-null": "error",
+    "no-unused-private-class-members": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "vars": "all",
+        "varsIgnorePattern": "^_",
+        "args": "all",
+        "argsIgnorePattern": "^_",
+        "caughtErrors": "all",
+        "caughtErrorsIgnorePattern": "^_",
+        "destructuredArrayIgnorePattern": "^_"
+      }
+    ],
+    "eqeqeq": "error",
+    "no-explicit-any": "error",
+    "strict-boolean-expressions": "error",
+    "prefer-nullish-coalescing": "error",
+    "no-floating-promises": "error",
+    "no-non-null-assertion": "warn",
+    "no-empty-function": "warn",
+    "no-param-reassign": "warn",
+    "prefer-for-of": "warn",
+    "array-type": "warn",
+    "prefer-as-const": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["packages/oxc/**/*.ts", "packages/typed-lint/**/*.ts"],
+      "rules": {
+        "array-type": "off",
+        "jip/no-in-operator": "off",
+        "jip/no-standard-map-set": "off",
+        "jip/no-single-use-private-functions": "off",
+        "jip/no-typeof-object": "off",
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["packages/typed-lint/**/*.ts"],
+      "rules": {
+        "jip/no-switch": "off"
+      }
+    },
+    {
+      "files": ["**/*.gen.ts"],
+      "rules": {
+        "jip/no-comments": "off",
+        "jip/no-type-assertion": "off",
+        "unicorn/filename-case": "off"
+      }
+    }
+  ]
+}

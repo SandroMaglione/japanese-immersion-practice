@@ -1,0 +1,25 @@
+{
+  "name": "japanese-immersion-practice",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "format": "oxfmt",
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r typecheck",
+    "lint:all": "NODE_OPTIONS='--experimental-strip-types' oxlint --disable-nested-config",
+    "lint": "NODE_OPTIONS='--experimental-strip-types' oxlint --disable-nested-config --quiet",
+    "lint:types": "NODE_OPTIONS='--experimental-strip-types' node packages/typed-lint/src/main.ts",
+    "verify": "pnpm run format && pnpm run typecheck && pnpm run lint:all && pnpm run lint:types"
+  },
+  "devDependencies": {
+    "@effect/language-service": "^0.86.2",
+    "@jip/oxc": "workspace:^",
+    "@jip/typed-lint": "workspace:^",
+    "@types/node": "latest",
+    "@typescript/native-preview": "7.0.0-dev.20260629.1",
+    "oxfmt": "^0.46.0",
+    "oxlint": "1.61.0",
+    "typescript": "7.0.1-rc"
+  },
+  "packageManager": "pnpm@11.7.0"
+}

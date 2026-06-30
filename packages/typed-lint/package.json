@@ -1,0 +1,10 @@
+{
+  "name": "@jip/typed-lint",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "NODE_OPTIONS='--experimental-strip-types' node src/main.ts",
+    "typecheck": "tsgo --noEmit"
+  }
+}
