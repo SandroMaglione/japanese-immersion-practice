@@ -8,5 +8,9 @@
   },
   "scripts": {
     "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@effect/platform-browser": "4.0.0-beta.92",
+    "effect": "4.0.0-beta.92"
   }
 }

@@ -1,4 +1,11 @@
 packages:
   - "packages/*"
 
+allowBuilds:
+  msgpackr-extract: false
+
+minimumReleaseAgeExclude:
+  - "@effect/platform-browser@4.0.0-beta.92"
+  - effect@4.0.0-beta.92
+
 nodeLinker: hoisted
