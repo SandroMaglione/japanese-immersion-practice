@@ -70,7 +70,7 @@ export class WordPracticeSubmission extends Schema.Class<WordPracticeSubmission>
 )({
   id: WordPracticeSubmissionId,
   wordText: NonEmptyString,
-  submittedText: NonEmptyString,
+  submittedText: Schema.String,
   submittedAt: Schema.DateTimeUtcFromMillis,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
 }) {}

@@ -50,11 +50,7 @@
           },
           "result": {
             "type": "string",
-            "enum": [
-              "correct",
-              "usable",
-              "incorrect"
-            ],
+            "enum": ["correct", "usable", "incorrect"],
             "description": "Assessment result for the user attempt."
           },
           "userAttempt": {
@@ -67,11 +63,7 @@
             ]
           }
         },
-        "required": [
-          "englishCue",
-          "result",
-          "userAttempt"
-        ],
+        "required": ["englishCue", "result", "userAttempt"],
         "additionalProperties": false
       },
       "allOf": [
@@ -82,9 +74,7 @@
       ]
     }
   },
-  "required": [
-    "attempts"
-  ],
+  "required": ["attempts"],
   "additionalProperties": false,
   "title": "Practice import JSON",
   "description": "JSON payload for importing Japanese immersion practice attempts."

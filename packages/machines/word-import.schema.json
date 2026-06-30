@@ -1,0 +1,54 @@
+{
+  "type": "object",
+  "properties": {
+    "words": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional notes. Add syntax, one short example sentence, or nuance information about this word."
+          },
+          "text": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1,
+                "description": "Japanese word or expression to import. Furigana notation: add each kanji reading in square brackets immediately after that kanji, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-kanji word. For kana-only words, write the word as-is."
+              }
+            ]
+          },
+          "translation": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1,
+                "description": "Plain translations for this Japanese word, separated by semicolons and a single space, with no semicolon at the end. Example: qualifications; requirements; capabilities. Do not include explanations, sentences, numbering, or extra notes."
+              }
+            ]
+          }
+        },
+        "required": ["text", "translation"],
+        "additionalProperties": false
+      },
+      "allOf": [
+        {
+          "minItems": 1,
+          "description": "Words to import into the word library."
+        }
+      ]
+    }
+  },
+  "required": ["words"],
+  "additionalProperties": false,
+  "title": "Word import JSON",
+  "description": "JSON payload for importing Japanese vocabulary words into the word library."
+}

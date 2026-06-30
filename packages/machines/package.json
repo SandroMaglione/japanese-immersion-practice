@@ -7,11 +7,12 @@
     ".": "./src/main.ts"
   },
   "scripts": {
-    "export:practice-import-schema": "NODE_OPTIONS='--experimental-strip-types' node scripts/export-practice-import-json-schema.ts",
+    "export:schemas": "NODE_OPTIONS='--experimental-strip-types' node scripts/export-json-schemas.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
     "@jip/indexeddb": "workspace:^",
+    "@jip/services": "workspace:^",
     "effect": "4.0.0-beta.92",
     "xstate": "6.0.0-alpha.12"
   },

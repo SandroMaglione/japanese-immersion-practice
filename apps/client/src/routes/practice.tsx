@@ -1,7 +1,14 @@
 import { PracticeOverviewMachine } from "@jip/machines";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
-import { ArrowRight, Check, LoaderCircle, RefreshCw } from "lucide-react";
+import {
+  ArrowRight,
+  Check,
+  CircleCheck,
+  CircleX,
+  LoaderCircle,
+  RefreshCw,
+} from "lucide-react";
 import type { Actor } from "xstate";
 
 import { formatDateTime } from "../lib/format.ts";
@@ -80,8 +87,13 @@ function PracticeSession({
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
   const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
   const currentItem = queue[0];
-  const hasResponse = currentResponse.trim() !== "";
   const isShowingResult = isRevealed && lastResult !== undefined;
+  const ResultIcon =
+    lastResult?.isCorrect === true ? CircleCheck : CircleX;
+  const resultIconLabel =
+    lastResult?.isCorrect === true ? "Correct" : "Incorrect";
+  const resultIconColor =
+    lastResult?.isCorrect === true ? "text-sky" : "text-berry";
 
   if (currentItem === undefined && !isShowingResult) {
     return (
@@ -126,6 +138,13 @@ function PracticeSession({
         <div className="flex min-h-48 w-full flex-col items-center justify-center gap-3">
           {isShowingResult ? (
             <div className="grid w-full gap-3">
+              <ResultIcon
+                aria-label={resultIconLabel}
+                className={`justify-self-center ${resultIconColor}`}
+                role="img"
+                size={34}
+                strokeWidth={2.5}
+              />
               <h1 className="w-full wrap-break-word text-5xl font-black leading-tight sm:text-7xl">
                 <KanjiWordText
                   kanjiEntries={kanjiEntries}
@@ -135,17 +154,17 @@ function PracticeSession({
               <p className="w-full wrap-break-word text-xl font-black leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.wordTranslation}
               </p>
+              {lastResult.wordDescription === undefined ? null : (
+                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                  {lastResult.wordDescription}
+                </p>
+              )}
             </div>
           ) : currentItem === undefined ? null : (
             <div className="grid w-full gap-3">
               <h1 className="w-full wrap-break-word text-3xl font-black leading-tight sm:text-4xl">
                 {currentItem.word.translation}
               </h1>
-              {currentItem.word.description !== undefined ? (
-                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
-                  {currentItem.word.description}
-                </p>
-              ) : null}
             </div>
           )}
         </div>
@@ -191,11 +210,7 @@ function PracticeSession({
                 });
               }}
               onKeyDown={(event) => {
-                if (
-                  event.key !== "Enter" ||
-                  event.nativeEvent.isComposing ||
-                  event.currentTarget.value.trim() === ""
-                ) {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
                   return;
                 }
 
@@ -208,7 +223,7 @@ function PracticeSession({
               aria-label="Submit"
               title="Submit"
               className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover disabled:bg-field disabled:text-ink-muted"
-              disabled={isSubmitting || !hasResponse}
+              disabled={isSubmitting}
             >
               {isSubmitting ? (
                 <LoaderCircle

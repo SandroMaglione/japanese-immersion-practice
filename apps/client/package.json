@@ -12,6 +12,7 @@
   "dependencies": {
     "@jip/indexeddb": "workspace:^",
     "@jip/machines": "workspace:^",
+    "@jip/services": "workspace:^",
     "@tanstack/react-router": "1.170.16",
     "@xstate/react": "7.0.0-alpha.1",
     "effect": "4.0.0-beta.92",

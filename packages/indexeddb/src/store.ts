@@ -3,11 +3,6 @@ import { Context, Effect, Layer } from "effect";
 import * as Database from "./database.ts";
 import * as Domain from "./domain.ts";
 
-export type ImportPracticeInput = {
-  readonly practiceImport: Domain.PracticeImport;
-  readonly attempts: readonly Domain.PracticeAttempt[];
-};
-
 export type StoreService = Context.Service.Shape<typeof Store>;
 
 export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
@@ -18,7 +13,10 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
       importPractice: Effect.fn("Store.importPractice")(function* ({
         attempts,
         practiceImport,
-      }: ImportPracticeInput) {
+      }: {
+        readonly practiceImport: Domain.PracticeImport;
+        readonly attempts: readonly Domain.PracticeAttempt[];
+      }) {
         yield* db.withTransaction({
           tables: ["practice_imports", "practice_attempts"],
           mode: "readwrite",
@@ -88,6 +86,47 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         wordEntry: Domain.WordEntry
       ) {
         yield* db.from("word_entries").insert(wordEntry);
+      }),
+
+      insertWordEntries: Effect.fn("Store.insertWordEntries")(function* (
+        wordEntries: readonly Domain.WordEntry[]
+      ) {
+        yield* db.from("word_entries").insertAll([...wordEntries]);
+      }),
+
+      updateWordEntry: Effect.fn("Store.updateWordEntry")(function* ({
+        originalText,
+        wordEntry,
+      }: {
+        readonly originalText: Domain.WordEntry["text"];
+        readonly wordEntry: Domain.WordEntry;
+      }) {
+        if (originalText === wordEntry.text) {
+          yield* db.from("word_entries").upsert(wordEntry);
+          return;
+        }
+
+        yield* db.withTransaction({
+          tables: ["word_entries", "word_practice_submissions"],
+          mode: "readwrite",
+        })(
+          Effect.gen(function* () {
+            const submissions = yield* db
+              .from("word_practice_submissions")
+              .select("byWordText")
+              .equals(originalText);
+            const updatedSubmissions = submissions.map((submission) => ({
+              ...submission,
+              wordText: wordEntry.text,
+            }));
+
+            yield* db.from("word_entries").delete().equals(originalText);
+            yield* db.from("word_entries").insert(wordEntry);
+            yield* db
+              .from("word_practice_submissions")
+              .upsertAll(updatedSubmissions);
+          })
+        );
       }),
 
       insertWordPracticeSubmission: Effect.fn(

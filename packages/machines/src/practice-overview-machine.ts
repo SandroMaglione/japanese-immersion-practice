@@ -1,4 +1,5 @@
 import { IndexedDb } from "@jip/indexeddb";
+import { FuriganaText } from "@jip/services";
 import { DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
@@ -28,6 +29,7 @@ const PracticeQueueItemSchema = Schema.Struct({
 const PracticeSubmissionResultSchema = Schema.Struct({
   isCorrect: Schema.Boolean,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
+  wordDescription: Schema.optionalKey(Schema.String),
   wordText: Schema.String,
   wordTranslation: Schema.String,
 });
@@ -36,6 +38,7 @@ const PracticeSubmitResultSchema = Schema.Struct({
   isCorrect: Schema.Boolean,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
   queue: Schema.Array(PracticeQueueItemSchema),
+  wordDescription: Schema.optionalKey(Schema.String),
   wordText: Schema.String,
   wordTranslation: Schema.String,
 });
@@ -65,7 +68,7 @@ const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
   DateTime.toEpochMillis(dateTime);
 
 const _normalizePracticeText = ({ text }: { readonly text: string }) =>
-  text.trim().normalize("NFKC");
+  FuriganaText.normalizePlainText({ text });
 
 const _isCorrectPracticeAnswer = ({
   submittedText,
@@ -174,7 +177,9 @@ const _buildPracticeQueue = ({
 
       return updatedAtDifference !== 0
         ? updatedAtDifference
-        : left.word.text.localeCompare(right.word.text);
+        : _normalizePracticeText({ text: left.word.text }).localeCompare(
+            _normalizePracticeText({ text: right.word.text })
+          );
     });
 };
 
@@ -230,9 +235,9 @@ export const makePracticeOverviewMachine = ({
               const submittedText = input.submittedText.trim();
               const wordText = input.wordText.trim();
 
-              if (submittedText === "" || wordText === "") {
+              if (wordText === "") {
                 return yield* Effect.fail(
-                  new Error("Type an answer before submitting.")
+                  new Error("Could not find a word to practice.")
                 );
               }
 
@@ -290,6 +295,9 @@ export const makePracticeOverviewMachine = ({
                   submissions: queuedSubmissions,
                   words: queuedWords,
                 }),
+                ...(word.description === undefined
+                  ? {}
+                  : { wordDescription: word.description }),
                 wordText: word.text,
                 wordTranslation: word.translation,
               };
@@ -358,6 +366,7 @@ export const makePracticeOverviewMachine = ({
               lastResult: {
                 isCorrect: event.output.isCorrect,
                 nextReviewAt: event.output.nextReviewAt,
+                wordDescription: event.output.wordDescription,
                 wordText: event.output.wordText,
                 wordTranslation: event.output.wordTranslation,
               },

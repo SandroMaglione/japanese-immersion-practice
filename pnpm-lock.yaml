@@ -41,6 +41,9 @@ importers:
       '@jip/machines':
         specifier: workspace:^
         version: link:../../packages/machines
+      '@jip/services':
+        specifier: workspace:^
+        version: link:../../packages/services
       '@tanstack/react-router':
         specifier: 1.170.16
         version: 1.170.16(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
@@ -99,6 +102,9 @@ importers:
       '@jip/indexeddb':
         specifier: workspace:^
         version: link:../indexeddb
+      '@jip/services':
+        specifier: workspace:^
+        version: link:../services
       effect:
         specifier: 4.0.0-beta.92
         version: 4.0.0-beta.92
@@ -111,6 +117,8 @@ importers:
         version: 26.0.1
 
   packages/oxc: {}
+
+  packages/services: {}
 
   packages/typed-lint: {}
 
