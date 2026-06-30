@@ -109,6 +109,16 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
+              const existingKanjiEntries = yield* store.listKanjiEntries();
+
+              if (
+                existingKanjiEntries.some((entry) => entry.symbol === symbol)
+              ) {
+                return yield* Effect.fail(
+                  new Error("That kanji is already in your library.")
+                );
+              }
+
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const kanjiEntry = yield* Schema.decodeEffect(
                 IndexedDb.Domain.KanjiEntry
@@ -120,7 +130,7 @@ export const makeLibraryMachine = ({
                 updatedAt: now,
               });
 
-              yield* store.upsertKanjiEntry(kanjiEntry);
+              yield* store.insertKanjiEntry(kanjiEntry);
 
               return yield* _loadLibraryData;
             })
@@ -145,6 +155,14 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWordEntries();
+
+              if (existingWordEntries.some((entry) => entry.text === text)) {
+                return yield* Effect.fail(
+                  new Error("That word is already in your library.")
+                );
+              }
+
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const wordEntry = yield* Schema.decodeEffect(
                 IndexedDb.Domain.WordEntry
@@ -156,7 +174,7 @@ export const makeLibraryMachine = ({
                 updatedAt: now,
               });
 
-              yield* store.upsertWordEntry(wordEntry);
+              yield* store.insertWordEntry(wordEntry);
 
               return yield* _loadLibraryData;
             })
