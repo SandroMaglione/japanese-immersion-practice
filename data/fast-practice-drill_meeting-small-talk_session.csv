@@ -1,0 +1,34 @@
+﻿No,English cue,User attempt,Result,Correction,Reason,Pattern tag
+1,I ran into an old friend by chance.,きっかけで長い付き合いの友達とすれ違った,❌ Incorrect,たまたま昔の友達にばったり会った。,「きっかけで」は because of / triggered by。「すれ違った」は会わずに通り過ぎた感じ。,たまたま〜にばったり会う
+2,We chatted for a bit after the event.,イベントの後で少し話していた,🟡 Usable,イベントの後で少し雑談した。,「話していた」でも通じるが、短く軽く話した感じなら「雑談した」が自然。,少し雑談する
+3,I asked him how he had been lately.,最近どうしていますかと聞いていた,🟡 Usable,最近どうしてるのか聞いた。,「聞いていた」だと継続・途中の感じ。雑談の報告なら「聞いた」。,〜のか聞く
+4,He said he had been busy with work.,仕事で忙しって返事した,❌ Incorrect,仕事で忙しいって返事した。,「忙し」は形容詞として未完成。引用なら「〜って返事した」でよい。,形容詞＋って返事する
+5,I told him I was still studying Japanese.,まだ日本語を勉強しているって言った,✅ Correct,まだ日本語を勉強しているって言った。,カジュアルな雑談の報告として「〜って言った」が自然。,〜って言う
+6,He asked me if I could hold a simple conversation now.,簡単な雑談でもできるのかって聞いた,🟡 Usable,簡単な会話ならできるのかって聞かれた。,英語は「彼に聞かれた」なので受け身が自然。「雑談でも」は even small talk? のニュアンス。,〜のかって聞かれる
+7,I said I could manage if the topic was simple.,話題が簡単ならできると思うって言った,✅ Correct,話題が簡単ならできると思うって言った。,manage の感じも「できると思う」で十分出ている。,〜ならできると思う
+8,The conversation got awkward for a moment.,会話は一瞬だけ恥ずかしくなってしまった,🟡 Usable,会話が一瞬だけ気まずくなった。,「恥ずかしい」は自分が恥ずかしい感じ。awkward は場の空気なので「気まずい」。,会話が気まずくなる
+9,I tried to change the topic quickly.,会話を変えるを試してみた,❌ Incorrect,話題を変えようとした。,「変えるを試す」は不可。try to change は「変えようとする」。対象は「会話」より「話題」。,〜ようとする
+10,I asked him what he had been doing on weekends lately.,最近週末でどうやっているかと聞いた,❌ Incorrect,最近週末は何をしているのか聞いた。,「週末で」は不自然。「どうやっている」は how are you doing it? に近い。活動内容なら「何をしている」。,週末は何をしているのか聞く
+11,He said he had been going hiking sometimes.,時々登山をしているって言われた,🟡 Usable,時々ハイキングに行っているって言っていた。,「言われた」は硬め。雑談の報告なら「言っていた」が自然。「登山」は本格的な山登り寄り。,〜って言っていた
+12,I said that sounded healthy.,健康そうって言った,✅ Correct,健康そうって言った。,軽い相づちとして自然。,〜そうって言う
+13,I asked him if he usually went alone.,一人で行くのかって聞いた,✅ Correct,一人で行くのかって聞いた。,自然。usually を明確にするなら「いつも一人で行くのかって聞いた」。,〜のかって聞く
+14,He said he usually goes with a few coworkers.,同僚たちと行くって言っていた,🟡 Usable,いつも同僚数人と行っているって言っていた。,usually と a few が抜けている。「同僚たち」より「同僚数人」が自然。,数人と〜している
+15,I said I’d like to try going sometime.,いつか行きたいって言った,✅ Correct,いつか行ってみたいって言った。,「行きたい」でも正しい。try going の軽さなら「行ってみたい」。,〜てみたいって言う
+16,He said I should come with them next time.,今度は一緒に来るって言ってくれた,🟡 Usable,次は一緒に来たらいいよって言ってくれた。,「一緒に来るって言ってくれた」だと彼自身が一緒に来ると言った感じにも聞こえる。誘いなら「来たらいいよ」。,〜たらいいよって言う
+17,I wasn’t sure if he was really inviting me.,本当の誘いかどうか分からなかった,🟡 Usable,本当に誘ってくれているのかどうか分からなかった。,「本当の誘い」は名詞っぽく硬い。相手の意図なら「本当に誘ってくれているのか」。,本当に〜てくれているのかどうか
+18,I laughed and said I didn’t want to slow them down.,邪魔になりたくないと笑いながら言った,🟡 Usable,足を引っ張りたくないって笑いながら言った。,「邪魔になりたくない」でも通じるが、グループのペースを遅らせる感じなら「足を引っ張る」。,足を引っ張りたくない
+19,"He said it would just be a relaxed walk, not a serious hike.",難しいハイキングじゃなくて、簡単で歩いてもいいと言ってくれた,❌ Incorrect,本格的な登山じゃなくて、気楽な散歩みたいなものだって言ってくれた。,「歩いてもいい」だと you may walk に聞こえる。relaxed walk は「気楽な散歩みたいなもの」。,〜じゃなくて、〜みたいなもの
+20,I felt a bit relieved when he said that.,聞いたら少しだけ安堵した,🟡 Usable,それを聞いて少しほっとした。,「安堵した」はやや硬い。雑談の自然な感情なら「ほっとした」。,それを聞いてほっとする
+21,I asked him where they usually meet.,普段どこに合流するかって聞いた,🟡 Usable,普段どこで合流するのかって聞いた。,「どこに合流する」より「どこで合流する」が自然。合流する場所＝動作が行われる場所。,どこで合流するのか聞く
+22,He said they usually meet in front of the station.,普段駅の前に合流するって言っていた,🟡 Usable,普段駅の前で合流するって言っていた。,合流する場所は「に」より「で」が自然。,場所で合流する
+23,I said that was easy to remember.,覚えやすいって言った,✅ Correct,覚えやすいって言った。,短い相づちとして自然。,〜やすいって言う
+24,I asked him what I should bring.,何を持てばいいかって聞いた,✅ Correct,何を持っていけばいいかって聞いた。,「持てばいい」でも通じるが、出かける場面では「持っていけばいい」が自然。,何を持っていけばいいか聞く
+25,He said just comfortable shoes would be enough.,合ってる靴だけでいいよって言っていた,🟡 Usable,歩きやすい靴だけで十分だって言っていた。,「合ってる靴」はサイズが合っている靴に聞こえやすい。歩く場面では「歩きやすい靴」。,歩きやすい靴
+26,I said I probably didn’t have suitable shoes.,多分歩きやすい靴でも持っていないけどって言った,🟡 Usable,多分歩きやすい靴は持っていないと思うって言った。,「靴でも持っていない」は不自然。suitable shoes はこの流れでは「歩きやすい靴」。,〜は持っていないと思う
+27,He said regular sneakers would be fine.,普段のスニーカーでもいいと思うよって言っていた,✅ Correct,普段のスニーカーでもいいと思うよって言っていた。,regular sneakers の感じも「普段のスニーカー」で出ている。,〜でもいいと思うよって言う
+28,I told him I would check when I got home.,家に帰ったら確認するって言った,✅ Correct,家に帰ったら確認するって言った。,雑談の流れなら自然。,家に帰ったら〜する
+29,I said I would message him later.,後で連絡するって言った,✅ Correct,後で連絡するって言った。,message him はこの文脈なら「連絡する」で十分。,後で連絡するって言う
+30,"After we said goodbye, I wondered if I had promised too much.",別れた後、多分言いすぎてしまったかと思っていた,🟡 Usable,別れた後、ちょっと約束しすぎたかもと思った。,「言いすぎた」は言葉が強すぎた・余計なことを言った感じ。ここでは「約束しすぎた」が自然。,〜しすぎたかもと思う
+31,"On the way home, I kept thinking about the conversation.",帰る途中で、ずっと会話のことを考えていた,✅ Correct,帰る途中で、ずっと会話のことを考えていた。,on the way home と kept thinking の両方が出ている。,帰る途中で〜のことを考える
+32,I realized I had agreed without checking my schedule.,前予定を確認せず賛成してしまったに気づいていた,❌ Incorrect,予定を確認せずに賛成してしまったことに気づいた。,「前予定」は不自然。「気づく」は 〜ことに気づく。一瞬の認識なら「気づいた」。,〜ことに気づく
+33,I hoped he wouldn’t message me right away.,今すぐ連絡されないことを願っていた,🟡 Usable,すぐに連絡が来ないといいなと思っていた。,「連絡されない」は受け身っぽく不自然。メッセージが来る/来ないなら「連絡が来る」。,〜ないといいなと思う
