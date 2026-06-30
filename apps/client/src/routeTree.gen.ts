@@ -9,19 +9,25 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WordRouteImport } from './routes/word'
 import { Route as PracticeRouteImport } from './routes/practice'
-import { Route as LibraryRouteImport } from './routes/library'
+import { Route as KanjiRouteImport } from './routes/kanji'
 import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
 
+const WordRoute = WordRouteImport.update({
+  id: '/word',
+  path: '/word',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const PracticeRoute = PracticeRouteImport.update({
   id: '/practice',
   path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LibraryRoute = LibraryRouteImport.update({
-  id: '/library',
-  path: '/library',
+const KanjiRoute = KanjiRouteImport.update({
+  id: '/kanji',
+  path: '/kanji',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ImportRoute = ImportRouteImport.update({
@@ -38,39 +44,50 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/library': typeof LibraryRoute
+  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
+  '/word': typeof WordRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/library': typeof LibraryRoute
+  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
+  '/word': typeof WordRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/import': typeof ImportRoute
-  '/library': typeof LibraryRoute
+  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
+  '/word': typeof WordRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/import' | '/library' | '/practice'
+  fullPaths: '/' | '/import' | '/kanji' | '/practice' | '/word'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/import' | '/library' | '/practice'
-  id: '__root__' | '/' | '/import' | '/library' | '/practice'
+  to: '/' | '/import' | '/kanji' | '/practice' | '/word'
+  id: '__root__' | '/' | '/import' | '/kanji' | '/practice' | '/word'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ImportRoute: typeof ImportRoute
-  LibraryRoute: typeof LibraryRoute
+  KanjiRoute: typeof KanjiRoute
   PracticeRoute: typeof PracticeRoute
+  WordRoute: typeof WordRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/word': {
+      id: '/word'
+      path: '/word'
+      fullPath: '/word'
+      preLoaderRoute: typeof WordRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/practice': {
       id: '/practice'
       path: '/practice'
@@ -78,11 +95,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/library': {
-      id: '/library'
-      path: '/library'
-      fullPath: '/library'
-      preLoaderRoute: typeof LibraryRouteImport
+    '/kanji': {
+      id: '/kanji'
+      path: '/kanji'
+      fullPath: '/kanji'
+      preLoaderRoute: typeof KanjiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/import': {
@@ -105,8 +122,9 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ImportRoute: ImportRoute,
-  LibraryRoute: LibraryRoute,
+  KanjiRoute: KanjiRoute,
   PracticeRoute: PracticeRoute,
+  WordRoute: WordRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -23,30 +23,20 @@ function HistoryRoute() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex flex-col items-center gap-5 py-3">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <h1 className="text-3xl font-black leading-tight sm:text-4xl">
-            Attempt history
-          </h1>
-          <p className="max-w-2xl text-sm font-semibold leading-6 text-ink-muted">
-            Review previous immersion drills, corrections, and recurring
-            patterns.
-          </p>
-        </div>
+      <section className="flex justify-center">
         <HistorySearch actor={actor} />
       </section>
-      <HistoryStats actor={actor} />
       {snapshot.matches("Loading") ? (
-        <div className="rounded-md border border-line bg-panel p-8 text-center text-sm font-bold text-ink-muted">
+        <div className="py-10 text-center text-sm font-bold text-ink-muted">
           Loading attempts
         </div>
       ) : null}
       {snapshot.matches("Failure") ? (
-        <div className="flex items-center justify-between gap-4 rounded-md border border-accent/25 bg-accent-soft p-4 text-sm font-bold text-accent">
+        <div className="flex items-center justify-between gap-4 py-4 text-sm font-bold text-accent">
           <span>{snapshot.context.message}</span>
           <button
             type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-accent/30 bg-panel px-3 text-sm font-black"
+            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition hover:bg-field"
             onClick={() => {
               actor.trigger.refresh();
             }}
@@ -65,7 +55,7 @@ function HistorySearch({ actor }: { readonly actor: PracticeHistoryActor }) {
   const query = useSelector(actor, (snapshot) => snapshot.context.query);
 
   return (
-    <label className="relative w-full max-w-2xl">
+    <label className="relative w-full max-w-xl">
       <Search
         aria-hidden="true"
         className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted"
@@ -74,8 +64,8 @@ function HistorySearch({ actor }: { readonly actor: PracticeHistoryActor }) {
       />
       <input
         autoComplete="off"
-        className="h-12 w-full rounded-md border border-line bg-panel pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink"
-        placeholder="Search sentence, answer, correction, reason, tag"
+        className="h-12 w-full rounded-md border border-line bg-field pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
+        placeholder="Search attempts"
         type="search"
         value={query}
         onChange={(event) => {
@@ -88,46 +78,6 @@ function HistorySearch({ actor }: { readonly actor: PracticeHistoryActor }) {
   );
 }
 
-function HistoryStats({ actor }: { readonly actor: PracticeHistoryActor }) {
-  const attempts = useSelector(actor, (snapshot) => snapshot.context.attempts);
-  const matchingAttempts = useSelector(
-    actor,
-    (snapshot) => snapshot.context.matchingAttempts
-  );
-  const correctCount = attempts.filter(
-    (view) => view.attempt.result === "correct"
-  ).length;
-  const usableCount = attempts.filter(
-    (view) => view.attempt.result === "usable"
-  ).length;
-  const incorrectCount = attempts.filter(
-    (view) => view.attempt.result === "incorrect"
-  ).length;
-
-  return (
-    <section className="grid gap-3 sm:grid-cols-4">
-      <div className="rounded-md border border-line bg-panel p-4">
-        <div className="text-xs font-black uppercase text-ink-muted">Shown</div>
-        <div className="mt-1 text-2xl font-black">
-          {matchingAttempts.length}
-        </div>
-      </div>
-      <div className="rounded-md border border-teal/20 bg-teal-soft p-4 text-teal">
-        <div className="text-xs font-black uppercase">Correct</div>
-        <div className="mt-1 text-2xl font-black">{correctCount}</div>
-      </div>
-      <div className="rounded-md border border-gold/20 bg-gold-soft p-4 text-gold">
-        <div className="text-xs font-black uppercase">Usable</div>
-        <div className="mt-1 text-2xl font-black">{usableCount}</div>
-      </div>
-      <div className="rounded-md border border-accent/20 bg-accent-soft p-4 text-accent">
-        <div className="text-xs font-black uppercase">Incorrect</div>
-        <div className="mt-1 text-2xl font-black">{incorrectCount}</div>
-      </div>
-    </section>
-  );
-}
-
 function HistoryList({ actor }: { readonly actor: PracticeHistoryActor }) {
   const attempts = useSelector(
     actor,
@@ -136,17 +86,17 @@ function HistoryList({ actor }: { readonly actor: PracticeHistoryActor }) {
 
   if (!EffectArray.isReadonlyArrayNonEmpty(attempts)) {
     return (
-      <div className="rounded-md border border-line bg-panel p-10 text-center">
+      <div className="py-14 text-center">
         <div className="text-lg font-black">No attempts found</div>
         <div className="mt-2 text-sm font-semibold text-ink-muted">
-          Import a CSV or adjust the search text.
+          Import JSON or adjust the search text.
         </div>
       </div>
     );
   }
 
   return (
-    <section className="overflow-hidden rounded-md border border-line bg-panel">
+    <section>
       <div className="divide-y divide-line">
         {attempts.map((view) => {
           const resultLabel =
@@ -159,52 +109,29 @@ function HistoryList({ actor }: { readonly actor: PracticeHistoryActor }) {
           return (
             <article
               key={view.attempt.id}
-              className="grid gap-4 p-4 lg:grid-cols-[1fr_1fr_160px]"
+              className="grid gap-3 py-3 sm:grid-cols-[1fr_auto]"
             >
               <div className="min-w-0">
-                <div className="text-xs font-black uppercase text-ink-muted">
-                  Sentence
-                </div>
-                <p className="mt-1 text-base font-bold leading-6">
+                <p className="text-base font-bold leading-6">
                   {view.attempt.sentence}
                 </p>
-                {view.attempt.patternTag === undefined ? null : (
-                  <div className="mt-3 inline-flex rounded-md border border-line bg-field px-2 py-1 text-xs font-black text-ink-muted">
-                    {view.attempt.patternTag}
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-black uppercase text-ink-muted">
-                  Attempt
-                </div>
-                <p className="mt-1 text-base font-bold leading-6">
+                <p className="mt-2 text-sm font-semibold leading-6 text-ink-muted">
                   {view.attempt.response}
                 </p>
-                {view.attempt.correction === undefined ? null : (
-                  <p className="mt-3 rounded-md bg-field p-3 text-sm font-semibold leading-6">
-                    {view.attempt.correction}
-                  </p>
-                )}
-                {view.attempt.reason === undefined ? null : (
-                  <p className="mt-2 text-sm font-semibold leading-6 text-ink-muted">
-                    {view.attempt.reason}
-                  </p>
-                )}
               </div>
-              <div className="flex flex-row items-start justify-between gap-3 lg:flex-col lg:items-end">
+              <div className="flex items-start justify-between gap-4 text-xs font-bold leading-5 text-ink-muted sm:flex-col sm:items-end">
                 <span
-                  className={`inline-flex rounded-md border px-2.5 py-1 text-xs font-black ${
+                  className={`font-black ${
                     view.attempt.result === "correct"
-                      ? "border-teal/25 bg-teal-soft text-teal"
+                      ? "text-teal"
                       : view.attempt.result === "usable"
-                        ? "border-gold/25 bg-gold-soft text-gold"
-                        : "border-accent/25 bg-accent-soft text-accent"
+                        ? "text-gold"
+                        : "text-accent"
                   }`}
                 >
                   {resultLabel}
                 </span>
-                <div className="text-right text-xs font-bold leading-5 text-ink-muted">
+                <div className="text-left sm:text-right">
                   <div>{view.practiceImport.sourceFileName}</div>
                   <div>
                     {formatDateTime({

@@ -1,0 +1,106 @@
+{
+  "type": "object",
+  "properties": {
+    "attempts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "correction": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Corrected Japanese sentence when the attempt is not fully correct."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "englishCue": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1,
+                "description": "English prompt or cue that the user responded to."
+              }
+            ]
+          },
+          "no": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "allOf": [
+                  {
+                    "description": "Optional source item number. It is not stored after import."
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "patternTag": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Short grammar or expression tag for the practice item."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "description": "Brief explanation of why the attempt received its result."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "correct",
+              "usable",
+              "incorrect"
+            ],
+            "description": "Assessment result for the user attempt."
+          },
+          "userAttempt": {
+            "type": "string",
+            "allOf": [
+              {
+                "minLength": 1,
+                "description": "Japanese sentence or response written by the user."
+              }
+            ]
+          }
+        },
+        "required": [
+          "englishCue",
+          "result",
+          "userAttempt"
+        ],
+        "additionalProperties": false
+      },
+      "allOf": [
+        {
+          "minItems": 1,
+          "description": "Practice attempts to import."
+        }
+      ]
+    }
+  },
+  "required": [
+    "attempts"
+  ],
+  "additionalProperties": false,
+  "title": "Practice import JSON",
+  "description": "JSON payload for importing Japanese immersion practice attempts."
+}

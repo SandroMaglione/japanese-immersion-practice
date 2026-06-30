@@ -1,18 +1,24 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
+import {
+  Array as EffectArray,
+  DateTime,
+  Effect,
+  Formatter,
+  Schema,
+} from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
 import type { MachineRuntime } from "./runtime.ts";
 
 const PracticeImportContextSchema = Schema.Struct({
-  csvText: Schema.String,
   importedCount: Schema.Number,
+  jsonText: Schema.String,
   message: Schema.optionalKey(Schema.String),
   sourceFileName: Schema.String,
 });
 
-const ImportCsvInputSchema = Schema.Struct({
-  csvText: Schema.String,
+const ImportJsonInputSchema = Schema.Struct({
+  jsonText: Schema.String,
   sourceFileName: Schema.String,
 });
 
@@ -21,27 +27,85 @@ const PracticeImportResultSchema = Schema.Struct({
   sourceFileName: Schema.String,
 });
 
-function _findCsvHeaderIndex({
-  header,
-  names,
-}: {
-  readonly header: readonly string[];
-  readonly names: readonly string[];
-}) {
-  return header.findIndex((value) =>
-    names.includes(value.trim().toLocaleLowerCase())
-  );
-}
+const PracticeImportJsonAttemptSchema = Schema.Struct({
+  correction: Schema.optional(
+    Schema.String.annotate({
+      description:
+        "Corrected Japanese sentence when the attempt is not fully correct.",
+    })
+  ),
+  englishCue: IndexedDb.Domain.NonEmptyString.annotate({
+    description: "English prompt or cue that the user responded to.",
+  }),
+  no: Schema.optional(
+    Schema.Int.annotate({
+      description:
+        "Optional source item number. It is not stored after import.",
+    })
+  ),
+  patternTag: Schema.optional(
+    Schema.String.annotate({
+      description: "Short grammar or expression tag for the practice item.",
+    })
+  ),
+  reason: Schema.optional(
+    Schema.String.annotate({
+      description: "Brief explanation of why the attempt received its result.",
+    })
+  ),
+  result: IndexedDb.Domain.PracticeResult.annotate({
+    description: "Assessment result for the user attempt.",
+  }),
+  userAttempt: IndexedDb.Domain.NonEmptyString.annotate({
+    description: "Japanese sentence or response written by the user.",
+  }),
+});
 
-function _csvCell({
-  index,
-  row,
-}: {
-  readonly index: number;
-  readonly row: readonly string[];
-}) {
-  return row[index]?.trim() ?? "";
-}
+export const PracticeImportJsonSchema = Schema.Struct({
+  attempts: Schema.Array(PracticeImportJsonAttemptSchema)
+    .check(Schema.isNonEmpty())
+    .annotate({
+      description: "Practice attempts to import.",
+    }),
+}).annotate({
+  description:
+    "JSON payload for importing Japanese immersion practice attempts.",
+  title: "Practice import JSON",
+});
+
+export const PracticeImportJsonSchemaDocument = Schema.toJsonSchemaDocument(
+  PracticeImportJsonSchema
+);
+
+export const PracticeImportJsonSchemaDefinition =
+  PracticeImportJsonSchemaDocument.schema;
+
+export const PracticeImportJsonSchemaDefinitionText = Formatter.formatJson(
+  PracticeImportJsonSchemaDefinition,
+  {
+    space: 2,
+  }
+);
+
+export const PracticeImportJsonExample = Formatter.formatJson(
+  {
+    attempts: [
+      {
+        correction: "たまたま昔の友達にばったり会った。",
+        englishCue: "I ran into an old friend by chance.",
+        no: 1,
+        patternTag: "たまたま〜にばったり会う",
+        reason:
+          "「きっかけで」は because of / triggered by。「すれ違った」は会わずに通り過ぎた感じ。",
+        result: "incorrect",
+        userAttempt: "きっかけで長い付き合いの友達とすれ違った",
+      },
+    ],
+  },
+  {
+    space: 2,
+  }
+);
 
 export const makePracticeImportMachine = ({
   runtime,
@@ -52,20 +116,20 @@ export const makePracticeImportMachine = ({
     schemas: {
       context: Schema.toStandardSchemaV1(PracticeImportContextSchema),
       events: {
-        changeCsvText: Schema.toStandardSchemaV1(
-          Schema.Struct({ csvText: Schema.String })
+        changeJsonText: Schema.toStandardSchemaV1(
+          Schema.Struct({ jsonText: Schema.String })
         ),
         changeSourceFileName: Schema.toStandardSchemaV1(
           Schema.Struct({ sourceFileName: Schema.String })
         ),
-        importCsv: Schema.toStandardSchemaV1(Schema.Void),
+        importJson: Schema.toStandardSchemaV1(Schema.Void),
         reset: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
     actorSources: {
-      importPracticeCsv: createAsyncLogic({
+      importPracticeJson: createAsyncLogic({
         schemas: {
-          input: Schema.toStandardSchemaV1(ImportCsvInputSchema),
+          input: Schema.toStandardSchemaV1(ImportJsonInputSchema),
           output: Schema.toStandardSchemaV1(PracticeImportResultSchema),
         },
         run: ({ input }) =>
@@ -79,131 +143,16 @@ export const makePracticeImportMachine = ({
                 );
               }
 
-              const normalizedText = input.csvText
-                .replace(/^\uFEFF/, "")
-                .replace(/\r\n/g, "\n")
-                .replace(/\r/g, "\n");
-              const rows: string[][] = [];
-              let row: string[] = [];
-              let field = "";
-              let insideQuotes = false;
+              const importData = yield* Schema.decodeEffect(
+                Schema.fromJsonString(PracticeImportJsonSchema)
+              )(input.jsonText.replace(/^\uFEFF/, ""));
 
-              for (let index = 0; index < normalizedText.length; index += 1) {
-                const char = normalizedText[index] ?? "";
-                const nextChar = normalizedText[index + 1] ?? "";
-
-                if (insideQuotes && char === '"' && nextChar === '"') {
-                  field += '"';
-                  index += 1;
-                  continue;
-                }
-
-                if (char === '"') {
-                  insideQuotes = !insideQuotes;
-                  continue;
-                }
-
-                if (!insideQuotes && char === ",") {
-                  row.push(field);
-                  field = "";
-                  continue;
-                }
-
-                if (!insideQuotes && char === "\n") {
-                  row.push(field);
-                  rows.push(row);
-                  row = [];
-                  field = "";
-                  continue;
-                }
-
-                field += char;
-              }
-
-              row.push(field);
-
-              if (row.some((cell) => cell.trim() !== "")) {
-                rows.push(row);
-              }
-
-              const header = rows[0] ?? [];
-              const sentenceIndex = _findCsvHeaderIndex({
-                header,
-                names: ["english cue", "sentence"],
-              });
-              const responseIndex = _findCsvHeaderIndex({
-                header,
-                names: ["user attempt", "response", "attempt"],
-              });
-              const resultIndex = _findCsvHeaderIndex({
-                header,
-                names: ["result"],
-              });
-              const correctionIndex = _findCsvHeaderIndex({
-                header,
-                names: ["correction"],
-              });
-              const reasonIndex = _findCsvHeaderIndex({
-                header,
-                names: ["reason"],
-              });
-              const patternTagIndex = _findCsvHeaderIndex({
-                header,
-                names: ["pattern tag", "pattern"],
-              });
-
-              if (sentenceIndex < 0 || responseIndex < 0 || resultIndex < 0) {
-                return yield* Effect.fail(
-                  new Error(
-                    "CSV must include English cue, User attempt, and Result columns."
-                  )
-                );
-              }
-
-              const parsedAttempts = rows.slice(1).flatMap((row) => {
-                const sentence = _csvCell({ index: sentenceIndex, row });
-                const response = _csvCell({ index: responseIndex, row });
-                const normalizedResult = _csvCell({
-                  index: resultIndex,
-                  row,
-                }).toLocaleLowerCase();
-                let result: IndexedDb.Domain.PracticeResult | undefined;
-
-                if (
-                  normalizedResult.includes("incorrect") ||
-                  normalizedResult.includes("❌")
-                ) {
-                  result = "incorrect";
-                } else if (
-                  normalizedResult.includes("usable") ||
-                  normalizedResult.includes("🟡")
-                ) {
-                  result = "usable";
-                } else if (
-                  normalizedResult.includes("correct") ||
-                  normalizedResult.includes("✅")
-                ) {
-                  result = "correct";
-                }
-
-                if (
-                  sentence === "" ||
-                  response === "" ||
-                  result === undefined
-                ) {
-                  return [];
-                }
-
-                const correction =
-                  correctionIndex < 0
-                    ? ""
-                    : _csvCell({ index: correctionIndex, row });
-                const reason =
-                  reasonIndex < 0 ? "" : _csvCell({ index: reasonIndex, row });
-                const patternTag =
-                  patternTagIndex < 0
-                    ? ""
-                    : _csvCell({ index: patternTagIndex, row });
+              const parsedAttempts = importData.attempts.flatMap((attempt) => {
+                const correction = attempt.correction?.trim() ?? "";
+                const patternTag = attempt.patternTag?.trim() ?? "";
+                const reason = attempt.reason?.trim() ?? "";
+                const response = attempt.userAttempt.trim();
+                const sentence = attempt.englishCue.trim();
 
                 return [
                   {
@@ -211,7 +160,7 @@ export const makePracticeImportMachine = ({
                     ...(patternTag === "" ? {} : { patternTag }),
                     ...(reason === "" ? {} : { reason }),
                     response,
-                    result,
+                    result: attempt.result,
                     sentence,
                   },
                 ];
@@ -220,7 +169,7 @@ export const makePracticeImportMachine = ({
               if (!EffectArray.isReadonlyArrayNonEmpty(parsedAttempts)) {
                 return yield* Effect.fail(
                   new Error(
-                    "CSV did not contain any complete practice attempts."
+                    "JSON did not contain any complete practice attempts."
                   )
                 );
               }
@@ -259,17 +208,17 @@ export const makePracticeImportMachine = ({
     },
   }).createMachine({
     context: {
-      csvText: "",
       importedCount: 0,
+      jsonText: "",
       sourceFileName: "",
     },
     initial: "Editing",
     states: {
       Editing: {
         on: {
-          changeCsvText: ({ event }) => ({
+          changeJsonText: ({ event }) => ({
             context: {
-              csvText: event.csvText,
+              jsonText: event.jsonText,
               message: undefined,
             },
           }),
@@ -279,13 +228,13 @@ export const makePracticeImportMachine = ({
               message: undefined,
             },
           }),
-          importCsv: {
+          importJson: {
             target: "Importing",
           },
           reset: {
             context: {
-              csvText: "",
               importedCount: 0,
+              jsonText: "",
               message: undefined,
               sourceFileName: "",
             },
@@ -294,16 +243,16 @@ export const makePracticeImportMachine = ({
       },
       Importing: {
         invoke: {
-          src: "importPracticeCsv",
+          src: "importPracticeJson",
           input: ({ context }) => ({
-            csvText: context.csvText,
+            jsonText: context.jsonText,
             sourceFileName: context.sourceFileName,
           }),
           onDone: ({ event }) => ({
             target: "Imported",
             context: {
-              csvText: "",
               importedCount: event.output.attemptCount,
+              jsonText: "",
               message: `${event.output.attemptCount} attempts imported from ${event.output.sourceFileName}.`,
               sourceFileName: "",
             },
@@ -314,17 +263,17 @@ export const makePracticeImportMachine = ({
               message:
                 event.error instanceof Error
                   ? event.error.message
-                  : "Could not import the CSV.",
+                  : "Could not import the JSON.",
             },
           }),
         },
       },
       Imported: {
         on: {
-          changeCsvText: ({ event }) => ({
+          changeJsonText: ({ event }) => ({
             target: "Editing",
             context: {
-              csvText: event.csvText,
+              jsonText: event.jsonText,
               message: undefined,
             },
           }),
@@ -338,8 +287,8 @@ export const makePracticeImportMachine = ({
           reset: {
             target: "Editing",
             context: {
-              csvText: "",
               importedCount: 0,
+              jsonText: "",
               message: undefined,
               sourceFileName: "",
             },

@@ -10,6 +10,7 @@
     "lint:all": "NODE_OPTIONS='--experimental-strip-types' oxlint --disable-nested-config",
     "lint": "NODE_OPTIONS='--experimental-strip-types' oxlint --disable-nested-config --quiet",
     "lint:types": "NODE_OPTIONS='--experimental-strip-types' node packages/typed-lint/src/main.ts",
+    "export:practice-import-schema": "pnpm --filter @jip/machines export:practice-import-schema",
     "verify": "pnpm run format && pnpm run typecheck && pnpm run lint:all && pnpm run lint:types"
   },
   "devDependencies": {

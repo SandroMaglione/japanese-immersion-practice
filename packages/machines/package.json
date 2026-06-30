@@ -7,6 +7,7 @@
     ".": "./src/main.ts"
   },
   "scripts": {
+    "export:practice-import-schema": "NODE_OPTIONS='--experimental-strip-types' node scripts/export-practice-import-json-schema.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

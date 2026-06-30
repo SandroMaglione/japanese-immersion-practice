@@ -1,18 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-ink: #161616;
-  --color-ink-muted: #62646a;
-  --color-paper: #fbfaf8;
-  --color-panel: #ffffff;
-  --color-line: #dfddd8;
-  --color-field: #f3f1ed;
-  --color-accent: #d94841;
-  --color-accent-soft: #fff0ee;
-  --color-teal: #11756d;
-  --color-teal-soft: #e7f7f4;
-  --color-gold: #99690f;
-  --color-gold-soft: #fff4d6;
+  --color-ink: #eff0ea;
+  --color-ink-muted: #9da09d;
+  --color-paper: #101112;
+  --color-panel: #181a1b;
+  --color-line: #303335;
+  --color-field: #212325;
+  --color-selection: #4d5559;
+  --color-action: #e3e5dc;
+  --color-action-hover: #f0f1ea;
+  --color-action-ink: #151616;
+  --color-accent: #ff8a80;
+  --color-accent-soft: #3d211f;
+  --color-teal: #7bdcca;
+  --color-teal-soft: #17352f;
+  --color-gold: #e8c56b;
+  --color-gold-soft: #3a2d14;
   --font-sans:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
     "Segoe UI", sans-serif;
@@ -22,6 +26,7 @@
   html {
     background: var(--color-paper);
     color: var(--color-ink);
+    color-scheme: dark;
   }
 
   body {
@@ -42,5 +47,10 @@
 
   button:disabled {
     cursor: not-allowed;
+  }
+
+  ::selection {
+    background: var(--color-selection);
+    color: var(--color-ink);
   }
 }
