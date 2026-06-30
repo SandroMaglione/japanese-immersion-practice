@@ -7,10 +7,10 @@ export const Route = createRootRoute({
 
 function RootRoute() {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-svh overflow-x-hidden bg-paper text-ink">
       <nav
         aria-label="Primary"
-        className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 gap-1 rounded-md border border-line bg-panel/95 p-1 shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur"
+        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex -translate-x-1/2 gap-1 rounded-md border border-line bg-panel/95 p-1 shadow-[0_18px_50px_rgba(0,0,0,0.35)] backdrop-blur"
       >
         <Link
           to="/"
@@ -73,7 +73,7 @@ function RootRoute() {
           <Dumbbell size={18} strokeWidth={2.5} />
         </Link>
       </nav>
-      <main className="mx-auto min-h-screen w-full max-w-3xl px-4 pb-28 pt-10 sm:px-6">
+      <main className="mx-auto min-h-svh w-full max-w-3xl px-4 pb-[calc(7rem+env(safe-area-inset-bottom))] pt-6 sm:px-6 sm:pt-10">
         <Outlet />
       </main>
     </div>

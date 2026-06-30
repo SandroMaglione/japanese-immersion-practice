@@ -28,7 +28,7 @@ export function KanjiLibraryContent() {
             <label className="grid gap-2">
               <span className="text-sm font-black">Kanji</span>
               <input
-                className="h-11 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
+                className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
                 value={snapshot.context.kanjiSymbol}
                 onChange={(event) => {
                   actor.trigger.changeKanjiSymbol({
@@ -40,7 +40,7 @@ export function KanjiLibraryContent() {
             <label className="grid gap-2">
               <span className="text-sm font-black">Readings</span>
               <input
-                className="h-11 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
+                className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
                 placeholder="た, だ"
                 value={snapshot.context.kanjiReadings}
                 onChange={(event) => {
@@ -53,7 +53,7 @@ export function KanjiLibraryContent() {
             <label className="grid gap-2">
               <span className="text-sm font-black">Note</span>
               <textarea
-                className="min-h-28 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
+                className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
                 value={snapshot.context.kanjiDescription}
                 onChange={(event) => {
                   actor.trigger.changeKanjiDescription({
@@ -64,7 +64,7 @@ export function KanjiLibraryContent() {
             </label>
             <button
               type="button"
-              className="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
               disabled={savingKanji}
               onClick={() => {
                 actor.trigger.saveKanji();
@@ -120,13 +120,13 @@ export function WordLibraryContent() {
       <div
         role="tablist"
         aria-label="Word entry mode"
-        className="flex rounded-md border border-line bg-panel p-1"
+        className="flex min-w-0 rounded-md border border-line bg-panel p-1"
       >
         <button
           type="button"
           role="tab"
           aria-selected={showingBatchImport}
-          className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-black transition ${
+          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
             showingBatchImport
               ? "bg-action text-action-ink hover:bg-action-hover"
               : "text-ink-muted hover:bg-field hover:text-ink"
@@ -142,7 +142,7 @@ export function WordLibraryContent() {
           type="button"
           role="tab"
           aria-selected={!showingBatchImport}
-          className={`inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-md px-3 text-sm font-black transition ${
+          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
             showingBatchImport
               ? "text-ink-muted hover:bg-field hover:text-ink"
               : "bg-action text-action-ink hover:bg-action-hover"
@@ -167,7 +167,7 @@ export function WordLibraryContent() {
               <label className="grid gap-2">
                 <span className="text-sm font-black">JSON</span>
                 <textarea
-                  className="min-h-80 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+                  className="min-h-80 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
                   disabled={importingWords}
                   placeholder={LibraryMachine.WordImportJsonExample}
                   value={snapshot.context.wordImportJsonText}
@@ -178,7 +178,7 @@ export function WordLibraryContent() {
                   }}
                 />
               </label>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink disabled:opacity-50"
@@ -191,7 +191,7 @@ export function WordLibraryContent() {
                 </button>
                 <button
                   type="button"
-                  className="inline-flex h-10 items-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
                   disabled={importingWords}
                   onClick={() => {
                     actor.trigger.importWords();
@@ -209,7 +209,7 @@ export function WordLibraryContent() {
               <label className="grid gap-2">
                 <span className="text-sm font-black">Word</span>
                 <input
-                  className="h-11 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
+                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
                   value={snapshot.context.wordText}
                   onChange={(event) => {
                     actor.trigger.changeWordText({
@@ -221,7 +221,7 @@ export function WordLibraryContent() {
               <label className="grid gap-2">
                 <span className="text-sm font-black">Translation</span>
                 <input
-                  className="h-11 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted"
+                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted"
                   value={snapshot.context.wordTranslation}
                   onChange={(event) => {
                     actor.trigger.changeWordTranslation({
@@ -233,7 +233,7 @@ export function WordLibraryContent() {
               <label className="grid gap-2">
                 <span className="text-sm font-black">Note</span>
                 <textarea
-                  className="min-h-28 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
+                  className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
                   value={snapshot.context.wordDescription}
                   onChange={(event) => {
                     actor.trigger.changeWordDescription({
@@ -244,7 +244,7 @@ export function WordLibraryContent() {
               </label>
               <button
                 type="button"
-                className="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
                 disabled={savingWord}
                 onClick={() => {
                   actor.trigger.saveWord();
@@ -271,15 +271,21 @@ export function WordLibraryContent() {
 
                 return (
                   <article key={entry.text} className="grid gap-3 py-4">
-                    <div className="flex items-start justify-between gap-4">
+                    <div
+                      className={
+                        editingWord
+                          ? "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                          : "flex min-w-0 items-start justify-between gap-4"
+                      }
+                    >
                       {editingWord ? (
-                        <div className="grid flex-1 gap-3">
+                        <div className="grid min-w-0 flex-1 gap-3">
                           <label className="grid gap-2">
                             <span className="text-xs font-black text-ink-muted">
                               Word
                             </span>
                             <input
-                              className="h-10 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted disabled:opacity-60"
+                              className="h-10 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted disabled:opacity-60"
                               disabled={updatingWord}
                               value={snapshot.context.editingWordText}
                               onChange={(event) => {
@@ -294,7 +300,7 @@ export function WordLibraryContent() {
                               Translation
                             </span>
                             <input
-                              className="h-10 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted disabled:opacity-60"
+                              className="h-10 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted disabled:opacity-60"
                               disabled={updatingWord}
                               value={snapshot.context.editingWordTranslation}
                               onChange={(event) => {
@@ -309,7 +315,7 @@ export function WordLibraryContent() {
                               Note
                             </span>
                             <textarea
-                              className="min-h-24 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted disabled:opacity-60"
+                              className="min-h-24 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted disabled:opacity-60"
                               disabled={updatingWord}
                               value={snapshot.context.editingWordDescription}
                               onChange={(event) => {
@@ -341,9 +347,9 @@ export function WordLibraryContent() {
                           )}
                         </div>
                       )}
-                      <div className="flex shrink-0 self-stretch items-center">
+                      <div className="flex shrink-0 items-center sm:self-stretch">
                         {editingWord ? (
-                          <div className="flex gap-1">
+                          <div className="flex w-full justify-end gap-1 sm:w-auto">
                             <button
                               type="button"
                               aria-label="Save word changes"

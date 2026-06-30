@@ -31,7 +31,7 @@ function PracticeRoute() {
   const isPracticeSubmitting = snapshot.matches("Submitting");
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5 sm:gap-6">
       {snapshot.matches("Loading") ? (
         <div className="py-10 text-center text-sm font-bold text-ink-muted">
           Loading practice data
@@ -88,8 +88,7 @@ function PracticeSession({
   const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
   const currentItem = queue[0];
   const isShowingResult = isRevealed && lastResult !== undefined;
-  const ResultIcon =
-    lastResult?.isCorrect === true ? CircleCheck : CircleX;
+  const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
   const resultIconLabel =
     lastResult?.isCorrect === true ? "Correct" : "Incorrect";
   const resultIconColor =
@@ -97,7 +96,7 @@ function PracticeSession({
 
   if (currentItem === undefined && !isShowingResult) {
     return (
-      <section className="flex min-h-[calc(100vh-12rem)] flex-col justify-center gap-4 py-6 text-center sm:items-center">
+      <section className="flex min-h-[calc(100svh-10rem)] flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
         <div>
           <div className="text-lg font-black">No words yet</div>
           <div className="mt-1 text-sm font-semibold text-ink-muted">
@@ -115,7 +114,7 @@ function PracticeSession({
   }
 
   return (
-    <section className="relative flex min-h-[calc(100vh-12rem)] flex-col justify-center py-6">
+    <section className="relative flex min-h-[calc(100svh-10rem)] flex-col py-2 sm:min-h-[calc(100svh-12rem)] sm:justify-center sm:py-6">
       <button
         type="button"
         aria-label="Refresh"
@@ -129,13 +128,13 @@ function PracticeSession({
         <RefreshCw size={16} strokeWidth={2.5} />
       </button>
       <form
-        className="mx-auto flex w-full max-w-xl flex-col items-center gap-8 text-center"
+        className="mx-auto flex w-full max-w-xl flex-col items-center gap-5 pt-12 text-center sm:gap-8 sm:pt-0"
         onSubmit={(event) => {
           event.preventDefault();
           actor.trigger.submit();
         }}
       >
-        <div className="flex min-h-48 w-full flex-col items-center justify-center gap-3">
+        <div className="flex min-h-36 w-full flex-col items-center justify-center gap-3 sm:min-h-48">
           {isShowingResult ? (
             <div className="grid w-full gap-3">
               <ResultIcon
@@ -145,13 +144,13 @@ function PracticeSession({
                 size={34}
                 strokeWidth={2.5}
               />
-              <h1 className="w-full wrap-break-word text-5xl font-black leading-tight sm:text-7xl">
+              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
                 <KanjiWordText
                   kanjiEntries={kanjiEntries}
                   text={lastResult.wordText}
                 />
               </h1>
-              <p className="w-full wrap-break-word text-xl font-black leading-tight text-ink-muted sm:text-2xl">
+              <p className="w-full wrap-break-word text-lg font-black leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.wordTranslation}
               </p>
               {lastResult.wordDescription === undefined ? null : (
@@ -162,7 +161,7 @@ function PracticeSession({
             </div>
           ) : currentItem === undefined ? null : (
             <div className="grid w-full gap-3">
-              <h1 className="w-full wrap-break-word text-3xl font-black leading-tight sm:text-4xl">
+              <h1 className="w-full wrap-break-word text-2xl font-black leading-tight sm:text-4xl">
                 {currentItem.word.translation}
               </h1>
             </div>
