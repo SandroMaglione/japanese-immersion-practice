@@ -1,8 +1,8 @@
 import { PracticeOverviewMachine } from "@jip/machines";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMachine } from "@xstate/react";
-import { Array as EffectArray } from "effect";
-import { RefreshCw } from "lucide-react";
+import { useMachine, useSelector } from "@xstate/react";
+import { ArrowRight, Check, LoaderCircle, RefreshCw } from "lucide-react";
+import type { Actor } from "xstate";
 
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
@@ -18,6 +18,9 @@ export const Route = createFileRoute("/practice")({
 
 function PracticeRoute() {
   const [snapshot, , actor] = useMachine(practiceOverviewMachine);
+  const isPracticeReady = snapshot.matches("Ready");
+  const isPracticeRevealed = snapshot.matches("Revealed");
+  const isPracticeSubmitting = snapshot.matches("Submitting");
 
   return (
     <div className="flex flex-col gap-6">
@@ -41,62 +44,195 @@ function PracticeRoute() {
           </button>
         </div>
       ) : null}
-      {snapshot.matches("Ready") ? (
-        <section>
-          {!EffectArray.isReadonlyArrayNonEmpty(snapshot.context.words) ? (
-            <div className="flex flex-col gap-4 py-6 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-lg font-black">No words yet</div>
-                <div className="mt-1 text-sm font-semibold text-ink-muted">
-                  Add a few entries to shape the first practice session.
-                </div>
-              </div>
-              <Link
-                to="/word"
-                className="inline-flex h-10 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover"
-              >
-                Add words
-              </Link>
-            </div>
-          ) : (
-            <div className="grid gap-5">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className="text-lg font-black">Practice queue</div>
-                </div>
-                <button
-                  type="button"
-                  className="inline-flex h-10 w-fit items-center gap-2 rounded-md px-3 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink"
-                  onClick={() => {
-                    actor.trigger.refresh();
-                  }}
-                >
-                  <RefreshCw size={15} strokeWidth={2.5} />
-                  Refresh
-                </button>
-              </div>
-              <div className="divide-y divide-line">
-                {snapshot.context.words.slice(0, 8).map((word) => (
-                  <article
-                    key={word.text}
-                    className="grid gap-2 py-4 sm:grid-cols-[1fr_160px]"
-                  >
-                    <div>
-                      <div className="text-lg font-black">{word.text}</div>
-                      <div className="text-sm font-black text-accent">
-                        {word.translation}
-                      </div>
-                    </div>
-                    <div className="text-left text-xs font-bold leading-5 text-ink-muted sm:text-right">
-                      {formatDateTime({ dateTime: word.updatedAt })}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
+      {isPracticeReady || isPracticeRevealed || isPracticeSubmitting ? (
+        <PracticeSession
+          actor={actor}
+          isRevealed={isPracticeRevealed}
+          isSubmitting={isPracticeSubmitting}
+        />
       ) : null}
     </div>
+  );
+}
+
+function PracticeSession({
+  actor,
+  isRevealed,
+  isSubmitting,
+}: {
+  readonly actor: Actor<typeof practiceOverviewMachine>;
+  readonly isRevealed: boolean;
+  readonly isSubmitting: boolean;
+}) {
+  const currentResponse = useSelector(
+    actor,
+    (snapshot) => snapshot.context.currentResponse
+  );
+  const lastResult = useSelector(
+    actor,
+    (snapshot) => snapshot.context.lastResult
+  );
+  const message = useSelector(actor, (snapshot) => snapshot.context.message);
+  const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
+  const currentItem = queue[0];
+  const hasResponse = currentResponse.trim() !== "";
+  const isShowingResult = isRevealed && lastResult !== undefined;
+
+  if (currentItem === undefined && !isShowingResult) {
+    return (
+      <section className="flex min-h-[calc(100vh-12rem)] flex-col justify-center gap-4 py-6 text-center sm:items-center">
+        <div>
+          <div className="text-lg font-black">No words yet</div>
+          <div className="mt-1 text-sm font-semibold text-ink-muted">
+            Add a few entries to shape the first practice session.
+          </div>
+        </div>
+        <Link
+          to="/word"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover"
+        >
+          Add words
+        </Link>
+      </section>
+    );
+  }
+
+  return (
+    <section className="relative flex min-h-[calc(100vh-12rem)] flex-col justify-center py-6">
+      <button
+        type="button"
+        aria-label="Refresh"
+        title="Refresh"
+        className="absolute right-0 top-0 inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink"
+        disabled={isSubmitting}
+        onClick={() => {
+          actor.trigger.refresh();
+        }}
+      >
+        <RefreshCw size={16} strokeWidth={2.5} />
+      </button>
+      <form
+        className="mx-auto flex w-full max-w-xl flex-col items-center gap-8 text-center"
+        onSubmit={(event) => {
+          event.preventDefault();
+          actor.trigger.submit();
+        }}
+      >
+        <div className="flex min-h-48 w-full flex-col items-center justify-center gap-3">
+          {isShowingResult ? (
+            <div className="grid w-full gap-3">
+              <h1 className="w-full wrap-break-word text-5xl font-black leading-tight sm:text-7xl">
+                {lastResult.wordText}
+              </h1>
+              <p className="w-full wrap-break-word text-xl font-black leading-tight text-ink-muted sm:text-2xl">
+                {lastResult.wordTranslation}
+              </p>
+            </div>
+          ) : currentItem === undefined ? null : (
+            <div className="grid w-full gap-3">
+              <h1 className="w-full wrap-break-word text-3xl font-black leading-tight sm:text-4xl">
+                {currentItem.word.translation}
+              </h1>
+              {currentItem.word.description !== undefined ? (
+                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                  {currentItem.word.description}
+                </p>
+              ) : null}
+            </div>
+          )}
+        </div>
+        {isShowingResult ? (
+          <button
+            type="button"
+            aria-label="Next"
+            title="Next"
+            autoFocus
+            className="inline-flex h-14 w-14 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover"
+            onClick={() => {
+              actor.trigger.submit();
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") {
+                return;
+              }
+
+              event.preventDefault();
+              actor.trigger.submit();
+            }}
+          >
+            <ArrowRight aria-hidden="true" size={20} strokeWidth={2.5} />
+          </button>
+        ) : (
+          <div className="flex w-full gap-2">
+            <label className="sr-only" htmlFor="practice-response">
+              Japanese word
+            </label>
+            <input
+              id="practice-response"
+              autoComplete="off"
+              autoFocus
+              className="h-14 min-w-0 flex-1 rounded-md border border-line bg-field px-4 text-center text-xl font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+              disabled={isSubmitting}
+              placeholder="日本語"
+              spellCheck={false}
+              type="text"
+              value={currentResponse}
+              onChange={(event) => {
+                actor.trigger.changeResponse({
+                  response: event.currentTarget.value,
+                });
+              }}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "Enter" ||
+                  event.nativeEvent.isComposing ||
+                  event.currentTarget.value.trim() === ""
+                ) {
+                  return;
+                }
+
+                event.preventDefault();
+                actor.trigger.submit();
+              }}
+            />
+            <button
+              type="submit"
+              aria-label="Submit"
+              title="Submit"
+              className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover disabled:bg-field disabled:text-ink-muted"
+              disabled={isSubmitting || !hasResponse}
+            >
+              {isSubmitting ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="animate-spin"
+                  size={20}
+                  strokeWidth={2.5}
+                />
+              ) : (
+                <Check aria-hidden="true" size={20} strokeWidth={2.5} />
+              )}
+            </button>
+          </div>
+        )}
+        <div className="min-h-12 text-sm font-bold leading-6 text-ink-muted">
+          {message !== undefined ? (
+            <span className="text-accent">{message}</span>
+          ) : lastResult !== undefined ? (
+            <span>
+              <span
+                className={lastResult.isCorrect ? "text-teal" : "text-accent"}
+              >
+                {lastResult.isCorrect ? "Correct" : "Again soon"}
+              </span>
+              <span className="text-ink-muted">
+                {" "}
+                · {formatDateTime({ dateTime: lastResult.nextReviewAt })}
+              </span>
+            </span>
+          ) : null}
+        </div>
+      </form>
+    </section>
   );
 }

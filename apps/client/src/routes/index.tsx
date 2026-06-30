@@ -2,11 +2,20 @@ import { PracticeHistoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import { Array as EffectArray } from "effect";
-import { RefreshCw, Search } from "lucide-react";
+import {
+  CircleAlert,
+  CircleCheck,
+  CircleX,
+  RefreshCw,
+  Search,
+} from "lucide-react";
 import type { Actor } from "xstate";
 
-import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
+import {
+  diffJapaneseSentence,
+  type SentenceDiffPart,
+} from "../lib/sentence-diff.ts";
 
 const historyMachine = PracticeHistoryMachine.makePracticeHistoryMachine({
   runtime: RuntimeClient,
@@ -99,51 +108,119 @@ function HistoryList({ actor }: { readonly actor: PracticeHistoryActor }) {
     <section>
       <div className="divide-y divide-line">
         {attempts.map((view) => {
-          const resultLabel =
+          const correction = view.attempt.correction;
+          const sentenceDiff =
+            correction === undefined
+              ? undefined
+              : diffJapaneseSentence({
+                  original: view.attempt.response,
+                  rewrite: correction,
+                });
+          const result =
             view.attempt.result === "correct"
-              ? "Correct"
+              ? {
+                  icon: CircleCheck,
+                  label: "Correct",
+                  textColor: "text-sky",
+                }
               : view.attempt.result === "usable"
-                ? "Usable"
-                : "Incorrect";
+                ? {
+                    icon: CircleAlert,
+                    label: "Usable",
+                    textColor: "text-gold",
+                  }
+                : {
+                    icon: CircleX,
+                    label: "Incorrect",
+                    textColor: "text-berry",
+                  };
+          const ResultIcon = result.icon;
 
           return (
             <article
               key={view.attempt.id}
-              className="grid gap-3 py-3 sm:grid-cols-[1fr_auto]"
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 px-3 py-8 sm:px-4"
             >
               <div className="min-w-0">
-                <p className="text-base font-bold leading-6">
+                <p className="wrap-break-word whitespace-pre-wrap text-lg font-black leading-7 sm:text-xl sm:leading-8">
+                  {sentenceDiff === undefined ? (
+                    view.attempt.response
+                  ) : (
+                    <SentenceDiffText
+                      isUnstable={view.attempt.result === "usable"}
+                      parts={sentenceDiff.original}
+                      tone="original"
+                    />
+                  )}
+                </p>
+                <p className="mt-2 wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
                   {view.attempt.sentence}
                 </p>
-                <p className="mt-2 text-sm font-semibold leading-6 text-ink-muted">
-                  {view.attempt.response}
-                </p>
-              </div>
-              <div className="flex items-start justify-between gap-4 text-xs font-bold leading-5 text-ink-muted sm:flex-col sm:items-end">
-                <span
-                  className={`font-black ${
-                    view.attempt.result === "correct"
-                      ? "text-teal"
-                      : view.attempt.result === "usable"
-                        ? "text-gold"
-                        : "text-accent"
-                  }`}
-                >
-                  {resultLabel}
-                </span>
-                <div className="text-left sm:text-right">
-                  <div>{view.practiceImport.sourceFileName}</div>
-                  <div>
-                    {formatDateTime({
-                      dateTime: view.practiceImport.importedAt,
-                    })}
+                {view.attempt.correction !== undefined ||
+                view.attempt.reason !== undefined ? (
+                  <div className="mt-3">
+                    {view.attempt.correction !== undefined ? (
+                      <p className="wrap-break-word whitespace-pre-wrap text-base font-bold leading-7 text-ink sm:text-lg">
+                        {sentenceDiff === undefined ? (
+                          view.attempt.correction
+                        ) : (
+                          <SentenceDiffText
+                            parts={sentenceDiff.rewrite}
+                            tone="rewrite"
+                          />
+                        )}
+                      </p>
+                    ) : null}
+                    {view.attempt.reason !== undefined ? (
+                      <p className="mt-2 wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
+                        {view.attempt.reason}
+                      </p>
+                    ) : null}
                   </div>
-                </div>
+                ) : null}
               </div>
+              <ResultIcon
+                aria-label={result.label}
+                className={`mt-1 ${result.textColor}`}
+                role="img"
+                size={24}
+                strokeWidth={2.5}
+              />
             </article>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function SentenceDiffText({
+  isUnstable = false,
+  parts,
+  tone,
+}: {
+  readonly isUnstable?: boolean;
+  readonly parts: readonly SentenceDiffPart[];
+  readonly tone: "original" | "rewrite";
+}) {
+  return (
+    <>
+      {parts.map((part, index) => (
+        <span
+          key={`${index}:${part.changeId ?? "same"}`}
+          className={
+            part.changed
+              ? tone === "original"
+                ? isUnstable
+                  ? "box-decoration-clone rounded-sm bg-gold-soft px-0.5 py-px text-gold"
+                  : "box-decoration-clone rounded-sm bg-accent-soft px-0.5 py-px text-accent"
+                : "box-decoration-clone rounded-sm bg-sky/15 px-0.5 py-px text-sky"
+              : undefined
+          }
+        >
+          {part.text}
+        </span>
+      ))}
+    </>
   );
 }

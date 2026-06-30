@@ -14,12 +14,10 @@ const PracticeImportContextSchema = Schema.Struct({
   importedCount: Schema.Number,
   jsonText: Schema.String,
   message: Schema.optionalKey(Schema.String),
-  sourceFileName: Schema.String,
 });
 
 const ImportJsonInputSchema = Schema.Struct({
   jsonText: Schema.String,
-  sourceFileName: Schema.String,
 });
 
 const PracticeImportResultSchema = Schema.Struct({
@@ -28,8 +26,8 @@ const PracticeImportResultSchema = Schema.Struct({
 });
 
 const PracticeImportJsonAttemptSchema = Schema.Struct({
-  correction: Schema.optional(
-    Schema.String.annotate({
+  correction: Schema.optionalKey(
+    Schema.NullOr(Schema.String).annotate({
       description:
         "Corrected Japanese sentence when the attempt is not fully correct.",
     })
@@ -37,19 +35,13 @@ const PracticeImportJsonAttemptSchema = Schema.Struct({
   englishCue: IndexedDb.Domain.NonEmptyString.annotate({
     description: "English prompt or cue that the user responded to.",
   }),
-  no: Schema.optional(
-    Schema.Int.annotate({
-      description:
-        "Optional source item number. It is not stored after import.",
-    })
-  ),
-  patternTag: Schema.optional(
-    Schema.String.annotate({
+  patternTag: Schema.optionalKey(
+    Schema.NullOr(Schema.String).annotate({
       description: "Short grammar or expression tag for the practice item.",
     })
   ),
-  reason: Schema.optional(
-    Schema.String.annotate({
+  reason: Schema.optionalKey(
+    Schema.NullOr(Schema.String).annotate({
       description: "Brief explanation of why the attempt received its result.",
     })
   ),
@@ -93,7 +85,6 @@ export const PracticeImportJsonExample = Formatter.formatJson(
       {
         correction: "たまたま昔の友達にばったり会った。",
         englishCue: "I ran into an old friend by chance.",
-        no: 1,
         patternTag: "たまたま〜にばったり会う",
         reason:
           "「きっかけで」は because of / triggered by。「すれ違った」は会わずに通り過ぎた感じ。",
@@ -119,9 +110,6 @@ export const makePracticeImportMachine = ({
         changeJsonText: Schema.toStandardSchemaV1(
           Schema.Struct({ jsonText: Schema.String })
         ),
-        changeSourceFileName: Schema.toStandardSchemaV1(
-          Schema.Struct({ sourceFileName: Schema.String })
-        ),
         importJson: Schema.toStandardSchemaV1(Schema.Void),
         reset: Schema.toStandardSchemaV1(Schema.Void),
       },
@@ -135,14 +123,6 @@ export const makePracticeImportMachine = ({
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const sourceFileName = input.sourceFileName.trim();
-
-              if (sourceFileName === "") {
-                return yield* Effect.fail(
-                  new Error("Add a source file name before importing.")
-                );
-              }
-
               const importData = yield* Schema.decodeEffect(
                 Schema.fromJsonString(PracticeImportJsonSchema)
               )(input.jsonText.replace(/^\uFEFF/, ""));
@@ -175,7 +155,9 @@ export const makePracticeImportMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const importedAt = DateTime.toEpochMillis(yield* DateTime.now);
+              const now = yield* DateTime.now;
+              const importedAt = DateTime.toEpochMillis(now);
+              const sourceFileName = `${DateTime.formatIso(now).toLocaleLowerCase()}/${parsedAttempts.length}`;
               const practiceImport = yield* Schema.decodeEffect(
                 IndexedDb.Domain.PracticeImport
               )({
@@ -210,7 +192,6 @@ export const makePracticeImportMachine = ({
     context: {
       importedCount: 0,
       jsonText: "",
-      sourceFileName: "",
     },
     initial: "Editing",
     states: {
@@ -222,12 +203,6 @@ export const makePracticeImportMachine = ({
               message: undefined,
             },
           }),
-          changeSourceFileName: ({ event }) => ({
-            context: {
-              sourceFileName: event.sourceFileName,
-              message: undefined,
-            },
-          }),
           importJson: {
             target: "Importing",
           },
@@ -236,7 +211,6 @@ export const makePracticeImportMachine = ({
               importedCount: 0,
               jsonText: "",
               message: undefined,
-              sourceFileName: "",
             },
           },
         },
@@ -246,7 +220,6 @@ export const makePracticeImportMachine = ({
           src: "importPracticeJson",
           input: ({ context }) => ({
             jsonText: context.jsonText,
-            sourceFileName: context.sourceFileName,
           }),
           onDone: ({ event }) => ({
             target: "Imported",
@@ -254,7 +227,6 @@ export const makePracticeImportMachine = ({
               importedCount: event.output.attemptCount,
               jsonText: "",
               message: `${event.output.attemptCount} attempts imported from ${event.output.sourceFileName}.`,
-              sourceFileName: "",
             },
           }),
           onError: ({ event }) => ({
@@ -277,20 +249,12 @@ export const makePracticeImportMachine = ({
               message: undefined,
             },
           }),
-          changeSourceFileName: ({ event }) => ({
-            target: "Editing",
-            context: {
-              message: undefined,
-              sourceFileName: event.sourceFileName,
-            },
-          }),
           reset: {
             target: "Editing",
             context: {
               importedCount: 0,
               jsonText: "",
               message: undefined,
-              sourceFileName: "",
             },
           },
         },

@@ -9,13 +9,13 @@
           "correction": {
             "anyOf": [
               {
-                "type": "string",
-                "description": "Corrected Japanese sentence when the attempt is not fully correct."
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Corrected Japanese sentence when the attempt is not fully correct."
           },
           "englishCue": {
             "type": "string",
@@ -26,42 +26,27 @@
               }
             ]
           },
-          "no": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "allOf": [
-                  {
-                    "description": "Optional source item number. It is not stored after import."
-                  }
-                ]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "patternTag": {
             "anyOf": [
               {
-                "type": "string",
-                "description": "Short grammar or expression tag for the practice item."
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Short grammar or expression tag for the practice item."
           },
           "reason": {
             "anyOf": [
               {
-                "type": "string",
-                "description": "Brief explanation of why the attempt received its result."
+                "type": "string"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "Brief explanation of why the attempt received its result."
           },
           "result": {
             "type": "string",

@@ -22,19 +22,6 @@ function ImportRoute() {
       <section>
         <div className="grid gap-4">
           <label className="grid gap-2">
-            <span className="text-sm font-black">Source name</span>
-            <input
-              className="h-11 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
-              placeholder="meeting-small-talk.json"
-              value={snapshot.context.sourceFileName}
-              onChange={(event) => {
-                actor.trigger.changeSourceFileName({
-                  sourceFileName: event.currentTarget.value,
-                });
-              }}
-            />
-          </label>
-          <label className="grid gap-2">
             <span className="text-sm font-black">JSON</span>
             <textarea
               className="min-h-80 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
