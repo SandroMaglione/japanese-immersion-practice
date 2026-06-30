@@ -5,6 +5,7 @@ import { ArrowRight, Check, LoaderCircle, RefreshCw } from "lucide-react";
 import type { Actor } from "xstate";
 
 import { formatDateTime } from "../lib/format.ts";
+import { KanjiWordText } from "../components/kanji-word-text.tsx";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const practiceOverviewMachine =
@@ -68,6 +69,10 @@ function PracticeSession({
     actor,
     (snapshot) => snapshot.context.currentResponse
   );
+  const kanjiEntries = useSelector(
+    actor,
+    (snapshot) => snapshot.context.kanjiEntries
+  );
   const lastResult = useSelector(
     actor,
     (snapshot) => snapshot.context.lastResult
@@ -122,7 +127,10 @@ function PracticeSession({
           {isShowingResult ? (
             <div className="grid w-full gap-3">
               <h1 className="w-full wrap-break-word text-5xl font-black leading-tight sm:text-7xl">
-                {lastResult.wordText}
+                <KanjiWordText
+                  kanjiEntries={kanjiEntries}
+                  text={lastResult.wordText}
+                />
               </h1>
               <p className="w-full wrap-break-word text-xl font-black leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.wordTranslation}

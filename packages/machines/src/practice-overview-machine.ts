@@ -41,11 +41,13 @@ const PracticeSubmitResultSchema = Schema.Struct({
 });
 
 const PracticeSessionDataSchema = Schema.Struct({
+  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   queue: Schema.Array(PracticeQueueItemSchema),
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
   currentResponse: Schema.String,
+  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   lastResult: Schema.optionalKey(PracticeSubmissionResultSchema),
   message: Schema.optionalKey(Schema.String),
   queue: Schema.Array(PracticeQueueItemSchema),
@@ -201,11 +203,13 @@ export const makePracticeOverviewMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const store = yield* IndexedDb.Store.Store;
+              const kanjiEntries = yield* store.listKanjiEntries();
               const now = yield* DateTime.now;
               const words = yield* store.listWordEntries();
               const submissions = yield* store.listWordPracticeSubmissions();
 
               return {
+                kanjiEntries,
                 queue: _buildPracticeQueue({
                   now,
                   submissions,
@@ -296,6 +300,7 @@ export const makePracticeOverviewMachine = ({
   }).createMachine({
     context: {
       currentResponse: "",
+      kanjiEntries: [],
       queue: [],
     },
     initial: "Loading",
@@ -306,6 +311,7 @@ export const makePracticeOverviewMachine = ({
           onDone: ({ event }) => ({
             target: "Ready",
             context: {
+              kanjiEntries: event.output.kanjiEntries,
               lastResult: undefined,
               message: undefined,
               queue: event.output.queue,

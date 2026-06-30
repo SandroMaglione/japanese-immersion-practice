@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { KanjiLibraryContent } from "../lib/library-content.tsx";
+import { KanjiLibraryContent } from "../components/library-content.tsx";
 
 export const Route = createFileRoute("/kanji")({
   component: KanjiRoute,

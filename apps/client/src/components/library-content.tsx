@@ -3,8 +3,9 @@ import { useMachine } from "@xstate/react";
 import { Array as EffectArray } from "effect";
 import { Save } from "lucide-react";
 
-import { formatDateTime } from "./format.ts";
-import { RuntimeClient } from "./runtime-client.ts";
+import { formatDateTime } from "../lib/format.ts";
+import { RuntimeClient } from "../lib/runtime-client.ts";
+import { KanjiWordText } from "./kanji-word-text.tsx";
 
 const libraryMachine = LibraryMachine.makeLibraryMachine({
   runtime: RuntimeClient,
@@ -183,7 +184,12 @@ export function WordLibraryContent() {
                 <article key={entry.text} className="grid gap-2 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-xl font-black">{entry.text}</div>
+                      <div className="text-xl font-black">
+                        <KanjiWordText
+                          kanjiEntries={snapshot.context.kanjiEntries}
+                          text={entry.text}
+                        />
+                      </div>
                       <div className="text-sm font-black text-accent">
                         {entry.translation}
                       </div>

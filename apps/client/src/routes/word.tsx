@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { WordLibraryContent } from "../lib/library-content.tsx";
+import { WordLibraryContent } from "../components/library-content.tsx";
 
 export const Route = createFileRoute("/word")({
   component: WordRoute,
