@@ -5,6 +5,7 @@ import {
   DateTime,
   Effect,
   Formatter,
+  Option,
   Schema,
 } from "effect";
 import { createAsyncLogic, setup } from "xstate";
@@ -63,6 +64,8 @@ const ImportWordsInputSchema = Schema.Struct({
 const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
   kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
+  skippedCount: Schema.Number,
+  skippedReasons: Schema.Array(Schema.String),
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
 });
 
@@ -83,6 +86,10 @@ const WordImportJsonWordSchema = Schema.Struct({
     description:
       "Plain translations for this Japanese word, separated by semicolons and a single space, with no semicolon at the end. Example: qualifications; requirements; capabilities. Do not include explanations, sentences, numbering, or extra notes.",
   }),
+});
+
+const WordImportJsonSourceSchema = Schema.Struct({
+  words: Schema.Array(Schema.Unknown),
 });
 
 export const WordImportJsonSchema = Schema.Struct({
@@ -325,81 +332,100 @@ export const makeLibraryMachine = ({
               }
 
               const importData = yield* Schema.decodeEffect(
-                Schema.fromJsonString(WordImportJsonSchema)
+                Schema.fromJsonString(WordImportJsonSourceSchema)
               )(input.jsonText.replace(/^\uFEFF/, ""));
 
-              const parsedWords = importData.words.map((word) => {
-                const description = word.description?.trim() ?? "";
-                const text = word.text.trim();
-                const translation = word.translation.trim();
+              const skippedReasons: string[] = [];
+              const parsedWords: {
+                readonly description?: string;
+                readonly normalizedText: string;
+                readonly text: string;
+                readonly translation: string;
+              }[] = [];
 
-                return {
+              for (const [
+                wordIndex,
+                unknownWord,
+              ] of importData.words.entries()) {
+                const decodedWord = Schema.decodeUnknownOption(
+                  WordImportJsonWordSchema
+                )(unknownWord);
+
+                if (Option.isNone(decodedWord)) {
+                  skippedReasons.push(`#${wordIndex + 1}: invalid word JSON`);
+                  continue;
+                }
+
+                const description = decodedWord.value.description?.trim() ?? "";
+                const text = decodedWord.value.text.trim();
+                const translation = decodedWord.value.translation.trim();
+                const normalizedText = _normalizeWordText({ text });
+                const displayText =
+                  FuriganaText.toPlainText({ text }) || `#${wordIndex + 1}`;
+
+                if (normalizedText === "" || translation === "") {
+                  skippedReasons.push(
+                    `${displayText}: missing word or translation`
+                  );
+                  continue;
+                }
+
+                if (translation.endsWith(";")) {
+                  skippedReasons.push(
+                    `${displayText}: translation ends with ;`
+                  );
+                  continue;
+                }
+
+                parsedWords.push({
                   ...(description === "" ? {} : { description }),
-                  normalizedText: _normalizeWordText({ text }),
+                  normalizedText,
                   text,
                   translation,
-                };
-              });
-
-              const incompleteWord = parsedWords.find(
-                (word) => word.normalizedText === "" || word.translation === ""
-              );
-
-              if (incompleteWord !== undefined) {
-                return yield* Effect.fail(
-                  new Error(
-                    "Every imported word needs a word and at least one translation."
-                  )
-                );
+                });
               }
 
-              const invalidTranslation = parsedWords.find((word) =>
-                word.translation.endsWith(";")
-              );
+              const unrepeatedWords: typeof parsedWords = [];
 
-              if (invalidTranslation !== undefined) {
-                return yield* Effect.fail(
-                  new Error("Imported translations must not end with `;`.")
-                );
-              }
-
-              const repeatedWord = parsedWords.find((word, wordIndex) =>
-                parsedWords.some(
-                  (candidateWord, candidateIndex) =>
-                    candidateIndex < wordIndex &&
-                    candidateWord.normalizedText === word.normalizedText
-                )
-              );
-
-              if (repeatedWord !== undefined) {
-                return yield* Effect.fail(
-                  new Error(
-                    `"${FuriganaText.toPlainText({ text: repeatedWord.text })}" is repeated in the import JSON.`
+              for (const parsedWord of parsedWords) {
+                if (
+                  unrepeatedWords.some(
+                    (word) => word.normalizedText === parsedWord.normalizedText
                   )
-                );
+                ) {
+                  skippedReasons.push(
+                    `${FuriganaText.toPlainText({ text: parsedWord.text })}: repeated in import JSON`
+                  );
+                  continue;
+                }
+
+                unrepeatedWords.push(parsedWord);
               }
 
               const store = yield* IndexedDb.Store.Store;
               const existingWordEntries = yield* store.listWordEntries();
-              const existingWordEntry = existingWordEntries.find((entry) =>
-                parsedWords.some(
-                  (word) =>
-                    _normalizeWordText({ text: entry.text }) ===
-                    word.normalizedText
-                )
-              );
+              const newWords: typeof parsedWords = [];
 
-              if (existingWordEntry !== undefined) {
-                return yield* Effect.fail(
-                  new Error(
-                    `"${FuriganaText.toPlainText({ text: existingWordEntry.text })}" is already in your library.`
+              for (const parsedWord of unrepeatedWords) {
+                if (
+                  existingWordEntries.some(
+                    (entry) =>
+                      _normalizeWordText({ text: entry.text }) ===
+                      parsedWord.normalizedText
                   )
-                );
+                ) {
+                  skippedReasons.push(
+                    `${FuriganaText.toPlainText({ text: parsedWord.text })}: already in library`
+                  );
+                  continue;
+                }
+
+                newWords.push(parsedWord);
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const wordEntries = yield* Effect.all(
-                parsedWords.map((word) =>
+                newWords.map((word) =>
                   Schema.decodeEffect(IndexedDb.Domain.WordEntry)({
                     createdAt: now,
                     ...(word.description === undefined
@@ -412,13 +438,17 @@ export const makeLibraryMachine = ({
                 )
               );
 
-              yield* store.insertWordEntries(wordEntries);
+              if (EffectArray.isReadonlyArrayNonEmpty(wordEntries)) {
+                yield* store.insertWordEntries(wordEntries);
+              }
 
               const libraryData = yield* _loadLibraryData;
 
               return {
                 importedCount: wordEntries.length,
                 kanjiEntries: libraryData.kanjiEntries,
+                skippedCount: skippedReasons.length,
+                skippedReasons: skippedReasons.slice(0, 5),
                 wordEntries: libraryData.wordEntries,
               };
             })
@@ -732,7 +762,15 @@ export const makeLibraryMachine = ({
             context: {
               importedWordCount: event.output.importedCount,
               kanjiEntries: event.output.kanjiEntries,
-              message: `${event.output.importedCount} words imported.`,
+              message:
+                event.output.skippedCount === 0
+                  ? `${event.output.importedCount} words imported.`
+                  : `${event.output.importedCount} words imported. ${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
+                      event.output.skippedCount >
+                      event.output.skippedReasons.length
+                        ? "; more skipped"
+                        : ""
+                    }).`,
               wordEntries: event.output.wordEntries,
               wordImportJsonText: "",
             },
