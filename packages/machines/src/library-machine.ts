@@ -90,7 +90,7 @@ const WordImportJsonWordSchema = Schema.Struct({
   description: Schema.optionalKey(
     Schema.NullOr(Schema.String).annotate({
       description:
-        "Optional notes. Add syntax, one short example sentence, or nuance information about this word.",
+        "Optional Japanese definition-style clue for recall: clear meaning, natural contexts, register or formality, tone, common pairings, and contrast with similar words, phrased without naming the target word.",
     })
   ),
   text: IndexedDb.Domain.NonEmptyString.annotate({
@@ -136,13 +136,13 @@ export const WordImportJsonExample = Formatter.formatJson(
     words: [
       {
         description:
-          "事業を始めるための資金が必要です。Money prepared for a specific purpose, especially business or activity costs.",
+          "事業や活動など、特定の目的のために用意するお金。日常的なお金より改まった響きがあり、運営や投資の元手という感じがある。",
         text: "資[し]金[きん]",
         translation: "funds; capital",
       },
       {
         description:
-          "思いがけない再会などに使う。昨日、駅で友達にばったり会った。",
+          "予定していない相手と偶然出くわすこと。単なる遭遇より突然の感じが強く、会話でも自然に使える。",
         text: "ばったり会[あ]う",
         translation: "to run into; to bump into",
       },

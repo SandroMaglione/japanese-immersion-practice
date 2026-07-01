@@ -15,7 +15,7 @@
                 "type": "null"
               }
             ],
-            "description": "Optional notes. Add syntax, one short example sentence, or nuance information about this word."
+            "description": "Optional Japanese definition-style clue for recall: clear meaning, natural contexts, register or formality, tone, common pairings, and contrast with similar words, phrased without naming the target word."
           },
           "text": {
             "type": "string",

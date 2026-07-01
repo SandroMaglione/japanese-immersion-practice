@@ -160,10 +160,15 @@ function PracticeSession({
               )}
             </div>
           ) : currentItem === undefined ? null : (
-            <div className="grid w-full gap-3">
-              <h1 className="w-full wrap-break-word text-2xl font-black leading-tight sm:text-4xl">
-                {currentItem.word.translation}
+            <div className="grid w-full gap-2 sm:gap-3">
+              <h1 className="w-full wrap-break-word text-2xl font-black leading-tight sm:text-3xl">
+                {currentItem.word.description ?? currentItem.word.translation}
               </h1>
+              {currentItem.word.description === undefined ? null : (
+                <p className="w-full wrap-break-word text-xs font-bold leading-5 text-ink-muted sm:text-sm">
+                  {currentItem.word.translation}
+                </p>
+              )}
             </div>
           )}
         </div>
