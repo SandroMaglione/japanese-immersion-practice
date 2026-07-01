@@ -19,7 +19,13 @@ const LibraryDataSchema = Schema.Struct({
 
 const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
 
+const DeleteWordConfirmationTimeoutMillis = 4_000;
+
+export const DeleteAllWordsConfirmationText = "delete all my words";
+
 const LibraryContextSchema = Schema.Struct({
+  deleteAllWordsConfirmation: Schema.String,
+  deletingWordText: Schema.optionalKey(Schema.String),
   editingWordDescription: Schema.String,
   editingWordOriginalText: Schema.optionalKey(Schema.String),
   editingWordText: Schema.String,
@@ -55,6 +61,14 @@ const UpdateWordInputSchema = Schema.Struct({
   originalText: Schema.String,
   text: Schema.String,
   translation: Schema.String,
+});
+
+const DeleteWordInputSchema = Schema.Struct({
+  text: Schema.String,
+});
+
+const DeleteAllWordsInputSchema = Schema.Struct({
+  confirmation: Schema.String,
 });
 
 const ImportWordsInputSchema = Schema.Struct({
@@ -180,6 +194,9 @@ export const makeLibraryMachine = ({
         changeEditingWordTranslation: Schema.toStandardSchemaV1(
           Schema.Struct({ translation: Schema.String })
         ),
+        changeDeleteAllWordsConfirmation: Schema.toStandardSchemaV1(
+          Schema.Struct({ confirmation: Schema.String })
+        ),
         changeWordDescription: Schema.toStandardSchemaV1(
           Schema.Struct({ description: Schema.String })
         ),
@@ -192,7 +209,13 @@ export const makeLibraryMachine = ({
         changeWordTranslation: Schema.toStandardSchemaV1(
           Schema.Struct({ translation: Schema.String })
         ),
+        cancelDeleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        cancelWordDeletion: Schema.toStandardSchemaV1(Schema.Void),
         cancelWordEdit: Schema.toStandardSchemaV1(Schema.Void),
+        deleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        deleteWord: Schema.toStandardSchemaV1(
+          Schema.Struct({ text: Schema.String })
+        ),
         editWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
         ),
@@ -525,9 +548,64 @@ export const makeLibraryMachine = ({
             })
           ),
       }),
+      deleteWordEntry: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(DeleteWordInputSchema),
+          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              const text = input.text.trim();
+
+              if (text === "") {
+                return yield* Effect.fail(
+                  new Error("Choose a word before deleting.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWordEntries();
+
+              if (!existingWordEntries.some((entry) => entry.text === text)) {
+                return yield* Effect.fail(
+                  new Error("Could not find that word in your library.")
+                );
+              }
+
+              yield* store.deleteWordEntry(text);
+
+              return yield* _loadLibraryData;
+            })
+          ),
+      }),
+      deleteAllWordEntries: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(DeleteAllWordsInputSchema),
+          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (
+                input.confirmation.trim() !== DeleteAllWordsConfirmationText
+              ) {
+                return yield* Effect.fail(
+                  new Error("Type the confirmation phrase before deleting.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              yield* store.deleteAllWordEntries();
+
+              return yield* _loadLibraryData;
+            })
+          ),
+      }),
     },
   }).createMachine({
     context: {
+      deleteAllWordsConfirmation: "",
       editingWordDescription: "",
       editingWordText: "",
       editingWordTranslation: "",
@@ -569,6 +647,18 @@ export const makeLibraryMachine = ({
       },
       Ready: {
         on: {
+          cancelDeleteAllWords: {
+            context: {
+              deleteAllWordsConfirmation: "",
+              message: undefined,
+            },
+          },
+          cancelWordDeletion: {
+            context: {
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
           cancelWordEdit: {
             context: {
               editingWordDescription: "",
@@ -581,6 +671,12 @@ export const makeLibraryMachine = ({
           changeEditingWordDescription: ({ event }) => ({
             context: {
               editingWordDescription: event.description,
+              message: undefined,
+            },
+          }),
+          changeDeleteAllWordsConfirmation: ({ event }) => ({
+            context: {
+              deleteAllWordsConfirmation: event.confirmation,
               message: undefined,
             },
           }),
@@ -638,6 +734,29 @@ export const makeLibraryMachine = ({
               wordTranslation: event.translation,
             },
           }),
+          deleteAllWords: {
+            target: "ConfirmingAllWordsDeletion",
+            context: {
+              deleteAllWordsConfirmation: "",
+              deletingWordText: undefined,
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              message: undefined,
+            },
+          },
+          deleteWord: ({ event }) => ({
+            target: "ConfirmingWordDeletion",
+            context: {
+              deletingWordText: event.text,
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              message: undefined,
+            },
+          }),
           editWord: ({ context, event }) => {
             const wordEntry = context.wordEntries.find(
               (entry) => entry.text === event.text
@@ -689,6 +808,138 @@ export const makeLibraryMachine = ({
           updateWord: {
             target: "UpdatingWord",
           },
+        },
+      },
+      ConfirmingWordDeletion: {
+        after: {
+          [DeleteWordConfirmationTimeoutMillis]: {
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
+        },
+        on: {
+          cancelWordDeletion: {
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
+          deleteAllWords: {
+            target: "ConfirmingAllWordsDeletion",
+            context: {
+              deleteAllWordsConfirmation: "",
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
+          deleteWord: ({ context, event }) =>
+            context.deletingWordText === event.text
+              ? {
+                  target: "DeletingWord",
+                }
+              : {
+                  reenter: true,
+                  target: "ConfirmingWordDeletion",
+                  context: {
+                    deletingWordText: event.text,
+                    message: undefined,
+                  },
+                },
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
+      ConfirmingAllWordsDeletion: {
+        on: {
+          cancelDeleteAllWords: {
+            target: "Ready",
+            context: {
+              deleteAllWordsConfirmation: "",
+              message: undefined,
+            },
+          },
+          changeDeleteAllWordsConfirmation: ({ event }) => ({
+            context: {
+              deleteAllWordsConfirmation: event.confirmation,
+              message: undefined,
+            },
+          }),
+          deleteAllWords: {
+            target: "DeletingAllWords",
+          },
+          deleteWord: ({ event }) => ({
+            target: "ConfirmingWordDeletion",
+            context: {
+              deleteAllWordsConfirmation: "",
+              deletingWordText: event.text,
+              message: undefined,
+            },
+          }),
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
+      DeletingWord: {
+        invoke: {
+          src: "deleteWordEntry",
+          input: ({ context }) => ({
+            text: context.deletingWordText ?? "",
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              kanjiEntries: event.output.kanjiEntries,
+              message: "Word deleted.",
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not delete the word.",
+            },
+          }),
+        },
+      },
+      DeletingAllWords: {
+        invoke: {
+          src: "deleteAllWordEntries",
+          input: ({ context }) => ({
+            confirmation: context.deleteAllWordsConfirmation,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deleteAllWordsConfirmation: "",
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              kanjiEntries: event.output.kanjiEntries,
+              message: "All words deleted.",
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "ConfirmingAllWordsDeletion",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not delete all words.",
+            },
+          }),
         },
       },
       SavingKanji: {

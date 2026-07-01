@@ -1,7 +1,7 @@
 import { LibraryMachine } from "@jip/machines";
 import { useMachine } from "@xstate/react";
 import { Array as EffectArray } from "effect";
-import { Check, Pencil, Save, Upload, X } from "lucide-react";
+import { Check, Pencil, Save, Trash2, Upload, X } from "lucide-react";
 
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
@@ -110,10 +110,24 @@ export function KanjiLibraryContent() {
 
 export function WordLibraryContent() {
   const [snapshot, , actor] = useMachine(libraryMachine);
+  const confirmingAllWordsDeletion = snapshot.matches(
+    "ConfirmingAllWordsDeletion"
+  );
+  const confirmingWordDeletion = snapshot.matches("ConfirmingWordDeletion");
+  const deletingAllWords = snapshot.matches("DeletingAllWords");
+  const deletingWord = snapshot.matches("DeletingWord");
   const importingWords = snapshot.matches("ImportingWords");
   const savingWord = snapshot.matches("SavingWord");
   const updatingWord = snapshot.matches("UpdatingWord");
+  const hasWordEntries = EffectArray.isReadonlyArrayNonEmpty(
+    snapshot.context.wordEntries
+  );
   const showingBatchImport = snapshot.context.wordView === "batch";
+  const wordDeletionActive =
+    confirmingAllWordsDeletion ||
+    confirmingWordDeletion ||
+    deletingAllWords ||
+    deletingWord;
 
   return (
     <div className="flex flex-col gap-6">
@@ -134,6 +148,7 @@ export function WordLibraryContent() {
           onClick={() => {
             actor.trigger.selectWordView({ view: "batch" });
           }}
+          disabled={wordDeletionActive}
         >
           <Upload size={16} strokeWidth={2.5} />
           Batch import
@@ -150,6 +165,7 @@ export function WordLibraryContent() {
           onClick={() => {
             actor.trigger.selectWordView({ view: "single" });
           }}
+          disabled={wordDeletionActive}
         >
           <Save size={16} strokeWidth={2.5} />
           Single word
@@ -168,7 +184,7 @@ export function WordLibraryContent() {
                 <span className="text-sm font-black">JSON</span>
                 <textarea
                   className="min-h-80 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
-                  disabled={importingWords}
+                  disabled={importingWords || wordDeletionActive}
                   placeholder={LibraryMachine.WordImportJsonExample}
                   value={snapshot.context.wordImportJsonText}
                   onChange={(event) => {
@@ -182,7 +198,7 @@ export function WordLibraryContent() {
                 <button
                   type="button"
                   className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink disabled:opacity-50"
-                  disabled={importingWords}
+                  disabled={importingWords || wordDeletionActive}
                   onClick={() => {
                     actor.trigger.resetWordImport();
                   }}
@@ -192,7 +208,7 @@ export function WordLibraryContent() {
                 <button
                   type="button"
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
-                  disabled={importingWords}
+                  disabled={importingWords || wordDeletionActive}
                   onClick={() => {
                     actor.trigger.importWords();
                   }}
@@ -210,6 +226,7 @@ export function WordLibraryContent() {
                 <span className="text-sm font-black">Word</span>
                 <input
                   className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
+                  disabled={wordDeletionActive}
                   value={snapshot.context.wordText}
                   onChange={(event) => {
                     actor.trigger.changeWordText({
@@ -222,6 +239,7 @@ export function WordLibraryContent() {
                 <span className="text-sm font-black">Translation</span>
                 <input
                   className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted"
+                  disabled={wordDeletionActive}
                   value={snapshot.context.wordTranslation}
                   onChange={(event) => {
                     actor.trigger.changeWordTranslation({
@@ -234,6 +252,7 @@ export function WordLibraryContent() {
                 <span className="text-sm font-black">Note</span>
                 <textarea
                   className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
+                  disabled={wordDeletionActive}
                   value={snapshot.context.wordDescription}
                   onChange={(event) => {
                     actor.trigger.changeWordDescription({
@@ -245,7 +264,7 @@ export function WordLibraryContent() {
               <button
                 type="button"
                 className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
-                disabled={savingWord}
+                disabled={savingWord || wordDeletionActive}
                 onClick={() => {
                   actor.trigger.saveWord();
                 }}
@@ -257,15 +276,74 @@ export function WordLibraryContent() {
           </form>
         )}
         <div className="pt-6">
-          {!EffectArray.isReadonlyArrayNonEmpty(
-            snapshot.context.wordEntries
-          ) ? (
+          {hasWordEntries ? (
+            <div className="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+              <button
+                type="button"
+                className={`inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md px-4 text-sm font-black transition disabled:opacity-50 ${
+                  confirmingAllWordsDeletion || deletingAllWords
+                    ? "bg-accent-soft text-accent hover:bg-accent-soft"
+                    : "border border-line bg-panel text-ink-muted hover:text-ink"
+                }`}
+                disabled={
+                  confirmingWordDeletion ||
+                  deletingAllWords ||
+                  deletingWord ||
+                  importingWords ||
+                  savingWord ||
+                  updatingWord
+                }
+                onClick={() => {
+                  actor.trigger.deleteAllWords();
+                }}
+              >
+                <Trash2 size={16} strokeWidth={2.5} />
+                {deletingAllWords
+                  ? "Deleting"
+                  : confirmingAllWordsDeletion
+                    ? "Confirm"
+                    : "Delete all"}
+              </button>
+              {confirmingAllWordsDeletion || deletingAllWords ? (
+                <div className="flex min-w-0 gap-2 sm:w-96">
+                  <input
+                    className="h-10 min-w-0 flex-1 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+                    aria-label="Delete all words confirmation"
+                    disabled={deletingAllWords}
+                    placeholder={LibraryMachine.DeleteAllWordsConfirmationText}
+                    value={snapshot.context.deleteAllWordsConfirmation}
+                    onChange={(event) => {
+                      actor.trigger.changeDeleteAllWordsConfirmation({
+                        confirmation: event.currentTarget.value,
+                      });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Cancel delete all words"
+                    title="Cancel delete all words"
+                    className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
+                    disabled={deletingAllWords}
+                    onClick={() => {
+                      actor.trigger.cancelDeleteAllWords();
+                    }}
+                  >
+                    <X size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+          {!hasWordEntries ? (
             <div className="py-6 text-sm font-bold text-ink-muted">
               No words saved yet.
             </div>
           ) : (
             <div className="divide-y divide-line">
               {snapshot.context.wordEntries.map((entry) => {
+                const confirmingDeletionForWord =
+                  confirmingWordDeletion &&
+                  snapshot.context.deletingWordText === entry.text;
                 const editingWord =
                   snapshot.context.editingWordOriginalText === entry.text;
 
@@ -376,18 +454,51 @@ export function WordLibraryContent() {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            type="button"
-                            aria-label="Edit word"
-                            title="Edit word"
-                            className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
-                            disabled={updatingWord}
-                            onClick={() => {
-                              actor.trigger.editWord({ text: entry.text });
-                            }}
-                          >
-                            <Pencil size={16} strokeWidth={2.5} />
-                          </button>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              aria-label="Edit word"
+                              title="Edit word"
+                              className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
+                              disabled={updatingWord || wordDeletionActive}
+                              onClick={() => {
+                                actor.trigger.editWord({ text: entry.text });
+                              }}
+                            >
+                              <Pencil size={16} strokeWidth={2.5} />
+                            </button>
+                            <button
+                              type="button"
+                              aria-label={
+                                confirmingDeletionForWord
+                                  ? "Confirm delete word"
+                                  : "Delete word"
+                              }
+                              title={
+                                confirmingDeletionForWord
+                                  ? "Confirm delete word"
+                                  : "Delete word"
+                              }
+                              className={`inline-flex size-9 items-center justify-center rounded-md transition disabled:opacity-50 ${
+                                confirmingDeletionForWord
+                                  ? "bg-accent-soft text-accent hover:bg-accent-soft"
+                                  : "border border-line bg-panel text-ink-muted hover:text-ink"
+                              }`}
+                              disabled={
+                                updatingWord ||
+                                deletingWord ||
+                                deletingAllWords ||
+                                confirmingAllWordsDeletion ||
+                                (confirmingWordDeletion &&
+                                  !confirmingDeletionForWord)
+                              }
+                              onClick={() => {
+                                actor.trigger.deleteWord({ text: entry.text });
+                              }}
+                            >
+                              <Trash2 size={16} strokeWidth={2.5} />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

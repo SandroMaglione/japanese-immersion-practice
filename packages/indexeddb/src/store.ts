@@ -129,6 +129,48 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         );
       }),
 
+      deleteWordEntry: Effect.fn("Store.deleteWordEntry")(function* (
+        text: Domain.WordEntry["text"]
+      ) {
+        yield* db.withTransaction({
+          tables: ["word_entries", "word_practice_submissions"],
+          mode: "readwrite",
+        })(
+          Effect.gen(function* () {
+            const submissions = yield* db
+              .from("word_practice_submissions")
+              .select("byWordText")
+              .equals(text);
+
+            yield* Effect.all([
+              db.from("word_entries").delete().equals(text),
+              Effect.all(
+                submissions.map((submission) =>
+                  db
+                    .from("word_practice_submissions")
+                    .delete()
+                    .equals(submission.id)
+                )
+              ),
+            ]);
+          })
+        );
+      }),
+
+      deleteAllWordEntries: Effect.fn("Store.deleteAllWordEntries")(
+        function* () {
+          yield* db.withTransaction({
+            tables: ["word_entries", "word_practice_submissions"],
+            mode: "readwrite",
+          })(
+            Effect.all([
+              db.from("word_entries").clear,
+              db.from("word_practice_submissions").clear,
+            ])
+          );
+        }
+      ),
+
       insertWordPracticeSubmission: Effect.fn(
         "Store.insertWordPracticeSubmission"
       )(function* (submission: Domain.WordPracticeSubmission) {
