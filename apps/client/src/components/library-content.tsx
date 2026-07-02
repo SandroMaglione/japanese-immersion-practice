@@ -13,68 +13,158 @@ const libraryMachine = LibraryMachine.makeLibraryMachine({
 
 export function KanjiLibraryContent() {
   const [snapshot, , actor] = useMachine(libraryMachine);
+  const importingKanji = snapshot.matches("ImportingKanji");
   const savingKanji = snapshot.matches("SavingKanji");
+  const kanjiBusy = importingKanji || savingKanji;
+  const showingBatchImport = snapshot.context.kanjiView === "batch";
 
   return (
     <div className="flex flex-col gap-6">
+      <div
+        role="tablist"
+        aria-label="Kanji entry mode"
+        className="flex min-w-0 rounded-md border border-line bg-panel p-1"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={showingBatchImport}
+          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
+            showingBatchImport
+              ? "bg-action text-action-ink hover:bg-action-hover"
+              : "text-ink-muted hover:bg-field hover:text-ink"
+          }`}
+          disabled={kanjiBusy}
+          onClick={() => {
+            actor.trigger.selectKanjiView({ view: "batch" });
+          }}
+        >
+          <Upload size={16} strokeWidth={2.5} />
+          Batch import
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!showingBatchImport}
+          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
+            showingBatchImport
+              ? "text-ink-muted hover:bg-field hover:text-ink"
+              : "bg-action text-action-ink hover:bg-action-hover"
+          }`}
+          disabled={kanjiBusy}
+          onClick={() => {
+            actor.trigger.selectKanjiView({ view: "single" });
+          }}
+        >
+          <Save size={16} strokeWidth={2.5} />
+          Single kanji
+        </button>
+      </div>
       {snapshot.context.message === undefined ? null : (
         <div className="py-3 text-sm font-black text-ink-muted">
           {snapshot.context.message}
         </div>
       )}
       <section className="divide-y divide-line">
-        <form className="pb-6">
-          <div className="grid gap-4">
-            <label className="grid gap-2">
-              <span className="text-sm font-black">Kanji</span>
-              <input
-                className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
-                value={snapshot.context.kanjiSymbol}
-                onChange={(event) => {
-                  actor.trigger.changeKanjiSymbol({
-                    symbol: event.currentTarget.value,
-                  });
+        {showingBatchImport ? (
+          <form className="pb-6">
+            <div className="grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-sm font-black">JSON</span>
+                <textarea
+                  className="min-h-80 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+                  disabled={importingKanji}
+                  placeholder={LibraryMachine.KanjiImportJsonExample}
+                  value={snapshot.context.kanjiImportJsonText}
+                  onChange={(event) => {
+                    actor.trigger.changeKanjiImportJsonText({
+                      jsonText: event.currentTarget.value,
+                    });
+                  }}
+                />
+              </label>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink disabled:opacity-50"
+                  disabled={importingKanji}
+                  onClick={() => {
+                    actor.trigger.resetKanjiImport();
+                  }}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+                  disabled={importingKanji}
+                  onClick={() => {
+                    actor.trigger.importKanji();
+                  }}
+                >
+                  <Upload size={16} strokeWidth={2.5} />
+                  {importingKanji ? "Importing" : "Import"}
+                </button>
+              </div>
+            </div>
+          </form>
+        ) : (
+          <form className="pb-6">
+            <div className="grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-sm font-black">Kanji</span>
+                <input
+                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted disabled:opacity-60"
+                  disabled={savingKanji}
+                  value={snapshot.context.kanjiSymbol}
+                  onChange={(event) => {
+                    actor.trigger.changeKanjiSymbol({
+                      symbol: event.currentTarget.value,
+                    });
+                  }}
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-black">Readings</span>
+                <input
+                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+                  disabled={savingKanji}
+                  placeholder="た, だ"
+                  value={snapshot.context.kanjiReadings}
+                  onChange={(event) => {
+                    actor.trigger.changeKanjiReadings({
+                      readings: event.currentTarget.value,
+                    });
+                  }}
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm font-black">Note</span>
+                <textarea
+                  className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted disabled:opacity-60"
+                  disabled={savingKanji}
+                  value={snapshot.context.kanjiDescription}
+                  onChange={(event) => {
+                    actor.trigger.changeKanjiDescription({
+                      description: event.currentTarget.value,
+                    });
+                  }}
+                />
+              </label>
+              <button
+                type="button"
+                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
+                disabled={savingKanji}
+                onClick={() => {
+                  actor.trigger.saveKanji();
                 }}
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-sm font-black">Readings</span>
-              <input
-                className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
-                placeholder="た, だ"
-                value={snapshot.context.kanjiReadings}
-                onChange={(event) => {
-                  actor.trigger.changeKanjiReadings({
-                    readings: event.currentTarget.value,
-                  });
-                }}
-              />
-            </label>
-            <label className="grid gap-2">
-              <span className="text-sm font-black">Note</span>
-              <textarea
-                className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
-                value={snapshot.context.kanjiDescription}
-                onChange={(event) => {
-                  actor.trigger.changeKanjiDescription({
-                    description: event.currentTarget.value,
-                  });
-                }}
-              />
-            </label>
-            <button
-              type="button"
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
-              disabled={savingKanji}
-              onClick={() => {
-                actor.trigger.saveKanji();
-              }}
-            >
-              <Save size={16} strokeWidth={2.5} />
-              {savingKanji ? "Saving" : "Save kanji"}
-            </button>
-          </div>
-        </form>
+              >
+                <Save size={16} strokeWidth={2.5} />
+                {savingKanji ? "Saving" : "Save kanji"}
+              </button>
+            </div>
+          </form>
+        )}
         <div className="pt-6">
           {!EffectArray.isReadonlyArrayNonEmpty(
             snapshot.context.kanjiEntries

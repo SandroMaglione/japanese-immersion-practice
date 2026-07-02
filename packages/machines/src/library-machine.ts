@@ -17,6 +17,7 @@ const LibraryDataSchema = Schema.Struct({
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
 });
 
+const KanjiLibraryViewSchema = Schema.Literals(["batch", "single"]);
 const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
 
 const DeleteWordConfirmationTimeoutMillis = 4_000;
@@ -30,11 +31,14 @@ const LibraryContextSchema = Schema.Struct({
   editingWordOriginalText: Schema.optionalKey(Schema.String),
   editingWordText: Schema.String,
   editingWordTranslation: Schema.String,
+  importedKanjiCount: Schema.Number,
   importedWordCount: Schema.Number,
   kanjiDescription: Schema.String,
   kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
+  kanjiImportJsonText: Schema.String,
   kanjiReadings: Schema.String,
   kanjiSymbol: Schema.String,
+  kanjiView: KanjiLibraryViewSchema,
   message: Schema.optionalKey(Schema.String),
   wordDescription: Schema.String,
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
@@ -75,6 +79,18 @@ const ImportWordsInputSchema = Schema.Struct({
   jsonText: Schema.String,
 });
 
+const ImportKanjiInputSchema = Schema.Struct({
+  jsonText: Schema.String,
+});
+
+const ImportKanjiResultSchema = Schema.Struct({
+  importedCount: Schema.Number,
+  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
+  skippedCount: Schema.Number,
+  skippedReasons: Schema.Array(Schema.String),
+  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+});
+
 const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
   kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
@@ -85,6 +101,74 @@ const ImportWordsResultSchema = Schema.Struct({
 
 const FuriganaNotationDescription =
   "Furigana notation: add each kanji reading in square brackets immediately after that kanji, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-kanji word. For kana-only words, write the word as-is.";
+
+const KanjiImportJsonKanjiSchema = Schema.Struct({
+  description: IndexedDb.Domain.NonEmptyString.annotate({
+    description:
+      "Japanese note for recall: meaning, nuance, common contexts, or a short mnemonic.",
+  }),
+  readings: Schema.Array(IndexedDb.Domain.NonEmptyString)
+    .check(Schema.isNonEmpty())
+    .annotate({
+      description:
+        'Kana readings for this kanji. Use one string per reading, for example ["し", "じ"].',
+    }),
+  symbol: IndexedDb.Domain.NonEmptyString.annotate({
+    description: "Kanji character to import.",
+  }),
+});
+
+const KanjiImportJsonSourceSchema = Schema.Struct({
+  kanji: Schema.Array(Schema.Unknown),
+});
+
+export const KanjiImportJsonSchema = Schema.Struct({
+  kanji: Schema.Array(KanjiImportJsonKanjiSchema)
+    .check(Schema.isNonEmpty())
+    .annotate({
+      description: "Kanji entries to import into the kanji library.",
+    }),
+}).annotate({
+  description:
+    "JSON payload for importing Japanese kanji entries into the kanji library.",
+  title: "Kanji import JSON",
+});
+
+export const KanjiImportJsonSchemaDocument = Schema.toJsonSchemaDocument(
+  KanjiImportJsonSchema
+);
+
+export const KanjiImportJsonSchemaDefinition =
+  KanjiImportJsonSchemaDocument.schema;
+
+export const KanjiImportJsonSchemaDefinitionText = Formatter.formatJson(
+  KanjiImportJsonSchemaDefinition,
+  {
+    space: 2,
+  }
+);
+
+export const KanjiImportJsonExample = Formatter.formatJson(
+  {
+    kanji: [
+      {
+        description:
+          "お金や物をもとにして何かを始めるときの「もと」。資金、資料、資格など、準備された価値や材料の感じがある。",
+        readings: ["し"],
+        symbol: "資",
+      },
+      {
+        description:
+          "人や物が合う、または集まる感じ。会う、会社、会話など、人と人が向き合う場面でよく出る。",
+        readings: ["あ", "かい"],
+        symbol: "会",
+      },
+    ],
+  },
+  {
+    space: 2,
+  }
+);
 
 const WordImportJsonWordSchema = Schema.Struct({
   description: Schema.optionalKey(
@@ -179,6 +263,9 @@ export const makeLibraryMachine = ({
         changeKanjiDescription: Schema.toStandardSchemaV1(
           Schema.Struct({ description: Schema.String })
         ),
+        changeKanjiImportJsonText: Schema.toStandardSchemaV1(
+          Schema.Struct({ jsonText: Schema.String })
+        ),
         changeKanjiReadings: Schema.toStandardSchemaV1(
           Schema.Struct({ readings: Schema.String })
         ),
@@ -219,11 +306,16 @@ export const makeLibraryMachine = ({
         editWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
         ),
+        importKanji: Schema.toStandardSchemaV1(Schema.Void),
         importWords: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        resetKanjiImport: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
         saveKanji: Schema.toStandardSchemaV1(Schema.Void),
         saveWord: Schema.toStandardSchemaV1(Schema.Void),
+        selectKanjiView: Schema.toStandardSchemaV1(
+          Schema.Struct({ view: KanjiLibraryViewSchema })
+        ),
         selectWordView: Schema.toStandardSchemaV1(
           Schema.Struct({ view: WordLibraryViewSchema })
         ),
@@ -287,6 +379,139 @@ export const makeLibraryMachine = ({
               yield* store.insertKanjiEntry(kanjiEntry);
 
               return yield* _loadLibraryData;
+            })
+          ),
+      }),
+      importKanjiEntries: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(ImportKanjiInputSchema),
+          output: Schema.toStandardSchemaV1(ImportKanjiResultSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (input.jsonText.trim() === "") {
+                return yield* Effect.fail(
+                  new Error("Paste kanji JSON before importing.")
+                );
+              }
+
+              const importData = yield* Schema.decodeEffect(
+                Schema.fromJsonString(KanjiImportJsonSourceSchema)
+              )(input.jsonText.replace(/^\uFEFF/, ""));
+
+              const skippedReasons: string[] = [];
+              const parsedKanjiEntries: {
+                readonly description: string;
+                readonly readings: readonly string[];
+                readonly symbol: string;
+              }[] = [];
+
+              for (const [
+                kanjiIndex,
+                unknownKanji,
+              ] of importData.kanji.entries()) {
+                const decodedKanji = Schema.decodeUnknownOption(
+                  KanjiImportJsonKanjiSchema
+                )(unknownKanji);
+
+                if (Option.isNone(decodedKanji)) {
+                  skippedReasons.push(`#${kanjiIndex + 1}: invalid kanji JSON`);
+                  continue;
+                }
+
+                const description = decodedKanji.value.description.trim();
+                const readings = decodedKanji.value.readings
+                  .map((reading) => reading.trim())
+                  .filter(Boolean)
+                  .filter(
+                    (reading, readingIndex, allReadings) =>
+                      allReadings.indexOf(reading) === readingIndex
+                  );
+                const symbol = decodedKanji.value.symbol.trim();
+                const displayText = symbol || `#${kanjiIndex + 1}`;
+
+                if (
+                  symbol === "" ||
+                  description === "" ||
+                  !EffectArray.isReadonlyArrayNonEmpty(readings)
+                ) {
+                  skippedReasons.push(
+                    `${displayText}: missing kanji, readings, or note`
+                  );
+                  continue;
+                }
+
+                parsedKanjiEntries.push({
+                  description,
+                  readings,
+                  symbol,
+                });
+              }
+
+              const unrepeatedKanjiEntries: typeof parsedKanjiEntries = [];
+
+              for (const parsedKanjiEntry of parsedKanjiEntries) {
+                if (
+                  unrepeatedKanjiEntries.some(
+                    (kanjiEntry) =>
+                      kanjiEntry.symbol === parsedKanjiEntry.symbol
+                  )
+                ) {
+                  skippedReasons.push(
+                    `${parsedKanjiEntry.symbol}: repeated in import JSON`
+                  );
+                  continue;
+                }
+
+                unrepeatedKanjiEntries.push(parsedKanjiEntry);
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingKanjiEntries = yield* store.listKanjiEntries();
+              const newKanjiEntries: typeof parsedKanjiEntries = [];
+
+              for (const parsedKanjiEntry of unrepeatedKanjiEntries) {
+                if (
+                  existingKanjiEntries.some(
+                    (entry) => entry.symbol === parsedKanjiEntry.symbol
+                  )
+                ) {
+                  skippedReasons.push(
+                    `${parsedKanjiEntry.symbol}: already in library`
+                  );
+                  continue;
+                }
+
+                newKanjiEntries.push(parsedKanjiEntry);
+              }
+
+              const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const kanjiEntries = yield* Effect.all(
+                newKanjiEntries.map((kanjiEntry) =>
+                  Schema.decodeEffect(IndexedDb.Domain.KanjiEntry)({
+                    createdAt: now,
+                    description: kanjiEntry.description,
+                    readings: kanjiEntry.readings,
+                    symbol: kanjiEntry.symbol,
+                    updatedAt: now,
+                  })
+                )
+              );
+
+              if (EffectArray.isReadonlyArrayNonEmpty(kanjiEntries)) {
+                yield* store.insertKanjiEntries(kanjiEntries);
+              }
+
+              const libraryData = yield* _loadLibraryData;
+
+              return {
+                importedCount: kanjiEntries.length,
+                kanjiEntries: libraryData.kanjiEntries,
+                skippedCount: skippedReasons.length,
+                skippedReasons: skippedReasons.slice(0, 5),
+                wordEntries: libraryData.wordEntries,
+              };
             })
           ),
       }),
@@ -609,11 +834,14 @@ export const makeLibraryMachine = ({
       editingWordDescription: "",
       editingWordText: "",
       editingWordTranslation: "",
+      importedKanjiCount: 0,
       importedWordCount: 0,
       kanjiDescription: "",
       kanjiEntries: [],
+      kanjiImportJsonText: "",
       kanjiReadings: "",
       kanjiSymbol: "",
+      kanjiView: "batch",
       wordDescription: "",
       wordEntries: [],
       wordImportJsonText: "",
@@ -695,6 +923,12 @@ export const makeLibraryMachine = ({
           changeKanjiDescription: ({ event }) => ({
             context: {
               kanjiDescription: event.description,
+              message: undefined,
+            },
+          }),
+          changeKanjiImportJsonText: ({ event }) => ({
+            context: {
+              kanjiImportJsonText: event.jsonText,
               message: undefined,
             },
           }),
@@ -780,11 +1014,21 @@ export const makeLibraryMachine = ({
               },
             };
           },
+          importKanji: {
+            target: "ImportingKanji",
+          },
           importWords: {
             target: "ImportingWords",
           },
           refresh: {
             target: "Loading",
+          },
+          resetKanjiImport: {
+            context: {
+              importedKanjiCount: 0,
+              kanjiImportJsonText: "",
+              message: undefined,
+            },
           },
           resetWordImport: {
             context: {
@@ -799,6 +1043,12 @@ export const makeLibraryMachine = ({
           saveWord: {
             target: "SavingWord",
           },
+          selectKanjiView: ({ event }) => ({
+            context: {
+              kanjiView: event.view,
+              message: undefined,
+            },
+          }),
           selectWordView: ({ event }) => ({
             context: {
               message: undefined,
@@ -968,6 +1218,41 @@ export const makeLibraryMachine = ({
                 event.error instanceof Error
                   ? event.error.message
                   : "Could not save the kanji.",
+            },
+          }),
+        },
+      },
+      ImportingKanji: {
+        invoke: {
+          src: "importKanjiEntries",
+          input: ({ context }) => ({
+            jsonText: context.kanjiImportJsonText,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              importedKanjiCount: event.output.importedCount,
+              kanjiEntries: event.output.kanjiEntries,
+              kanjiImportJsonText: "",
+              message:
+                event.output.skippedCount === 0
+                  ? `${event.output.importedCount} kanji imported.`
+                  : `${event.output.importedCount} kanji imported. ${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
+                      event.output.skippedCount >
+                      event.output.skippedReasons.length
+                        ? "; more skipped"
+                        : ""
+                    }).`,
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not import the kanji.",
             },
           }),
         },

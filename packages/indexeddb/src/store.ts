@@ -78,6 +78,12 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         yield* db.from("kanji_entries").insert(kanjiEntry);
       }),
 
+      insertKanjiEntries: Effect.fn("Store.insertKanjiEntries")(function* (
+        kanjiEntries: readonly Domain.KanjiEntry[]
+      ) {
+        yield* db.from("kanji_entries").insertAll([...kanjiEntries]);
+      }),
+
       listWordEntries: Effect.fn("Store.listWordEntries")(function* () {
         return yield* db.from("word_entries").select("byUpdatedAt").reverse();
       }),
