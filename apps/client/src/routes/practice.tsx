@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import type { Actor } from "xstate";
 
-import { formatDateTime } from "../lib/format.ts";
 import { KanjiWordText } from "../components/kanji-word-text.tsx";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
@@ -28,6 +27,7 @@ function PracticeRoute() {
   const [snapshot, , actor] = useMachine(practiceOverviewMachine);
   const isPracticeReady = snapshot.matches("Ready");
   const isPracticeRevealed = snapshot.matches("Revealed");
+  const isPracticeRefreshing = snapshot.matches("RefreshingBatch");
   const isPracticeSubmitting = snapshot.matches("Submitting");
 
   return (
@@ -52,11 +52,14 @@ function PracticeRoute() {
           </button>
         </div>
       ) : null}
-      {isPracticeReady || isPracticeRevealed || isPracticeSubmitting ? (
+      {isPracticeReady ||
+      isPracticeRevealed ||
+      isPracticeRefreshing ||
+      isPracticeSubmitting ? (
         <PracticeSession
           actor={actor}
           isRevealed={isPracticeRevealed}
-          isSubmitting={isPracticeSubmitting}
+          isSubmitting={isPracticeSubmitting || isPracticeRefreshing}
         />
       ) : null}
     </div>
@@ -85,6 +88,7 @@ function PracticeSession({
     (snapshot) => snapshot.context.lastResult
   );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
+  const batch = useSelector(actor, (snapshot) => snapshot.context.batch);
   const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
   const currentItem = queue[0];
   const isShowingResult = isRevealed && lastResult !== undefined;
@@ -93,6 +97,10 @@ function PracticeSession({
     lastResult?.isCorrect === true ? "Correct" : "Incorrect";
   const resultIconColor =
     lastResult?.isCorrect === true ? "text-sky" : "text-berry";
+  const batchProgressPercent =
+    batch === undefined || batch.totalCount === 0
+      ? 0
+      : Math.round((batch.completedCount / batch.totalCount) * 100);
 
   if (currentItem === undefined && !isShowingResult) {
     return (
@@ -114,21 +122,41 @@ function PracticeSession({
   }
 
   return (
-    <section className="relative flex min-h-[calc(100svh-10rem)] flex-col py-2 sm:min-h-[calc(100svh-12rem)] sm:justify-center sm:py-6">
-      <button
-        type="button"
-        aria-label="Refresh"
-        title="Refresh"
-        className="absolute right-0 top-0 inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink"
-        disabled={isSubmitting}
-        onClick={() => {
-          actor.trigger.refresh();
-        }}
-      >
-        <RefreshCw size={16} strokeWidth={2.5} />
-      </button>
+    <section className="grid min-h-[calc(100svh-10rem)] grid-rows-[3.25rem_minmax(0,1fr)] py-2 sm:min-h-[calc(100svh-12rem)] sm:grid-rows-[3.5rem_minmax(0,1fr)] sm:py-6">
+      <div className="mx-auto flex w-full max-w-xl items-center gap-3">
+        <button
+          type="button"
+          aria-label="Refresh batch"
+          title="Refresh batch"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink"
+          disabled={isSubmitting}
+          onClick={() => {
+            actor.trigger.refresh();
+          }}
+        >
+          <RefreshCw size={16} strokeWidth={2.5} />
+        </button>
+        {batch === undefined ? null : (
+          <div className="grid min-w-0 flex-1 gap-2 text-left">
+            <div className="flex items-center justify-between gap-3 text-xs font-black uppercase text-ink-muted">
+              <span>Batch {batch.batchNumber}</span>
+              <span>
+                {batch.completedCount} / {batch.totalCount}
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-sm bg-field">
+              <div
+                className="h-full rounded-sm bg-teal transition-[width]"
+                style={{
+                  width: `${batchProgressPercent}%`,
+                }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
       <form
-        className="mx-auto flex w-full max-w-xl flex-col items-center gap-5 pt-12 text-center sm:gap-8 sm:pt-0"
+        className="mx-auto flex min-h-0 w-full max-w-xl flex-col items-center justify-center gap-5 text-center sm:gap-8"
         onSubmit={(event) => {
           event.preventDefault();
           actor.trigger.submit();
@@ -161,7 +189,13 @@ function PracticeSession({
             </div>
           ) : currentItem === undefined ? null : (
             <div className="grid w-full gap-2 sm:gap-3">
-              <h1 className="w-full wrap-break-word text-2xl font-black leading-tight sm:text-3xl">
+              <h1
+                className={`w-full wrap-break-word font-black leading-tight ${
+                  currentItem.word.description === undefined
+                    ? "text-2xl sm:text-3xl"
+                    : "text-xl sm:text-2xl"
+                }`}
+              >
                 {currentItem.word.description ?? currentItem.word.translation}
               </h1>
               {currentItem.word.description === undefined ? null : (
@@ -246,17 +280,33 @@ function PracticeSession({
           {message !== undefined ? (
             <span className="text-accent">{message}</span>
           ) : lastResult !== undefined ? (
-            <span>
-              <span
-                className={lastResult.isCorrect ? "text-teal" : "text-accent"}
-              >
-                {lastResult.isCorrect ? "Correct" : "Again soon"}
+            lastResult.batchCompleted === undefined ? (
+              <span>
+                <span
+                  className={lastResult.isCorrect ? "text-teal" : "text-accent"}
+                >
+                  {lastResult.isCorrect ? "Correct" : "Incorrect"}
+                </span>
+                <span className="text-ink-muted">
+                  {" "}
+                  · Batch {lastResult.batchNumber}
+                </span>
               </span>
-              <span className="text-ink-muted">
-                {" "}
-                · {formatDateTime({ dateTime: lastResult.nextReviewAt })}
+            ) : (
+              <span>
+                <span
+                  className={lastResult.isCorrect ? "text-teal" : "text-accent"}
+                >
+                  {lastResult.isCorrect ? "Correct" : "Incorrect"}
+                </span>
+                <span className="text-ink-muted">
+                  {" "}
+                  · Batch {lastResult.batchCompleted.batchNumber} complete ·{" "}
+                  {lastResult.batchCompleted.correctCount}/
+                  {lastResult.batchCompleted.totalCount} correct
+                </span>
               </span>
-            </span>
+            )
           ) : null}
         </div>
       </form>

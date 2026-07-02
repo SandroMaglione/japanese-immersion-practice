@@ -46,6 +46,15 @@ export class WordPracticeSubmissionsTable extends IndexedDbTable.make({
   indexes: {
     byWordText: "wordText",
     bySubmittedAt: "submittedAt",
-    byNextReviewAt: "nextReviewAt",
+  },
+}) {}
+
+export class WordPracticeBatchesTable extends IndexedDbTable.make({
+  name: "word_practice_batches",
+  schema: Domain.WordPracticeBatch,
+  keyPath: "id",
+  indexes: {
+    byBatchNumber: "batchNumber",
+    byStartedAt: "startedAt",
   },
 }) {}

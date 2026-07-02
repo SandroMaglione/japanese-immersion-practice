@@ -18,6 +18,15 @@ export class Version1 extends IndexedDbVersion.make(
   Tables.WordPracticeSubmissionsTable
 ) {}
 
+export class Version2 extends IndexedDbVersion.make(
+  Tables.PracticeImportsTable,
+  Tables.PracticeAttemptsTable,
+  Tables.KanjiEntriesTable,
+  Tables.WordEntriesTable,
+  Tables.WordPracticeSubmissionsTable,
+  Tables.WordPracticeBatchesTable
+) {}
+
 export class JapanesePracticeDatabase extends IndexedDbDatabase.make(
   Version1,
   Effect.fn("JapanesePracticeDatabase.init")(function* (api) {
@@ -37,8 +46,16 @@ export class JapanesePracticeDatabase extends IndexedDbDatabase.make(
     yield* api.createObjectStore("word_practice_submissions");
     yield* api.createIndex("word_practice_submissions", "byWordText");
     yield* api.createIndex("word_practice_submissions", "bySubmittedAt");
-    yield* api.createIndex("word_practice_submissions", "byNextReviewAt");
   })
+).add(
+  Version2,
+  Effect.fn("JapanesePracticeDatabase.migrateToVersion2")(
+    function* (_fromApi, toApi) {
+      yield* toApi.createObjectStore("word_practice_batches");
+      yield* toApi.createIndex("word_practice_batches", "byBatchNumber");
+      yield* toApi.createIndex("word_practice_batches", "byStartedAt");
+    }
+  )
 ) {}
 
 export const layer = JapanesePracticeDatabase.layer(DatabaseName);

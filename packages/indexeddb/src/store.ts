@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Array as EffectArray, Context, Effect, Layer } from "effect";
 
 import * as Database from "./database.ts";
 import * as Domain from "./domain.ts";
@@ -113,7 +113,11 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         }
 
         yield* db.withTransaction({
-          tables: ["word_entries", "word_practice_submissions"],
+          tables: [
+            "word_entries",
+            "word_practice_batches",
+            "word_practice_submissions",
+          ],
           mode: "readwrite",
         })(
           Effect.gen(function* () {
@@ -121,16 +125,28 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
               .from("word_practice_submissions")
               .select("byWordText")
               .equals(originalText);
+            const batches = yield* db
+              .from("word_practice_batches")
+              .select("byStartedAt");
             const updatedSubmissions = submissions.map((submission) => ({
               ...submission,
               wordText: wordEntry.text,
             }));
+            const updatedBatches = batches
+              .filter((batch) => batch.wordOrder.includes(originalText))
+              .map((batch) => ({
+                ...batch,
+                wordOrder: batch.wordOrder.map((wordText) =>
+                  wordText === originalText ? wordEntry.text : wordText
+                ),
+              }));
 
             yield* db.from("word_entries").delete().equals(originalText);
             yield* db.from("word_entries").insert(wordEntry);
             yield* db
               .from("word_practice_submissions")
               .upsertAll(updatedSubmissions);
+            yield* db.from("word_practice_batches").upsertAll(updatedBatches);
           })
         );
       }),
@@ -139,7 +155,11 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         text: Domain.WordEntry["text"]
       ) {
         yield* db.withTransaction({
-          tables: ["word_entries", "word_practice_submissions"],
+          tables: [
+            "word_entries",
+            "word_practice_batches",
+            "word_practice_submissions",
+          ],
           mode: "readwrite",
         })(
           Effect.gen(function* () {
@@ -147,6 +167,17 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
               .from("word_practice_submissions")
               .select("byWordText")
               .equals(text);
+            const batches = yield* db
+              .from("word_practice_batches")
+              .select("byStartedAt");
+            const updatedBatches = batches
+              .filter((batch) => batch.wordOrder.includes(text))
+              .map((batch) => ({
+                ...batch,
+                wordOrder: batch.wordOrder.filter(
+                  (wordText) => wordText !== text
+                ),
+              }));
 
             yield* Effect.all([
               db.from("word_entries").delete().equals(text),
@@ -158,6 +189,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
                     .equals(submission.id)
                 )
               ),
+              db.from("word_practice_batches").upsertAll(updatedBatches),
             ]);
           })
         );
@@ -166,11 +198,16 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
       deleteAllWordEntries: Effect.fn("Store.deleteAllWordEntries")(
         function* () {
           yield* db.withTransaction({
-            tables: ["word_entries", "word_practice_submissions"],
+            tables: [
+              "word_entries",
+              "word_practice_batches",
+              "word_practice_submissions",
+            ],
             mode: "readwrite",
           })(
             Effect.all([
               db.from("word_entries").clear,
+              db.from("word_practice_batches").clear,
               db.from("word_practice_submissions").clear,
             ])
           );
@@ -181,6 +218,31 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         "Store.insertWordPracticeSubmission"
       )(function* (submission: Domain.WordPracticeSubmission) {
         yield* db.from("word_practice_submissions").insert(submission);
+      }),
+
+      saveWordPracticeSubmissionAndBatches: Effect.fn(
+        "Store.saveWordPracticeSubmissionAndBatches"
+      )(function* ({
+        batches,
+        submission,
+      }: {
+        readonly batches: readonly Domain.WordPracticeBatch[];
+        readonly submission: Domain.WordPracticeSubmission;
+      }) {
+        yield* db.withTransaction({
+          tables: ["word_practice_batches", "word_practice_submissions"],
+          mode: "readwrite",
+        })(
+          Effect.gen(function* () {
+            yield* db.from("word_practice_submissions").insert(submission);
+
+            if (!EffectArray.isReadonlyArrayNonEmpty(batches)) {
+              return;
+            }
+
+            yield* db.from("word_practice_batches").upsertAll([...batches]);
+          })
+        );
       }),
 
       listWordPracticeSubmissions: Effect.fn(
@@ -201,14 +263,26 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           .equals(wordText);
       }),
 
-      listDueWordPracticeSubmissions: Effect.fn(
-        "Store.listDueWordPracticeSubmissions"
-      )(function* (nextReviewAtEpochMillis: number) {
-        return yield* db
-          .from("word_practice_submissions")
-          .select("byNextReviewAt")
-          .lte(nextReviewAtEpochMillis);
-      }),
+      listWordPracticeBatches: Effect.fn("Store.listWordPracticeBatches")(
+        function* () {
+          return yield* db
+            .from("word_practice_batches")
+            .select("byStartedAt")
+            .reverse();
+        }
+      ),
+
+      insertWordPracticeBatch: Effect.fn("Store.insertWordPracticeBatch")(
+        function* (batch: Domain.WordPracticeBatch) {
+          yield* db.from("word_practice_batches").insert(batch);
+        }
+      ),
+
+      upsertWordPracticeBatch: Effect.fn("Store.upsertWordPracticeBatch")(
+        function* (batch: Domain.WordPracticeBatch) {
+          yield* db.from("word_practice_batches").upsert(batch);
+        }
+      ),
     };
   }),
 }) {

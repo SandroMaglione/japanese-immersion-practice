@@ -1,5 +1,12 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
-import { Dumbbell, History, Languages, Upload, WholeWord } from "lucide-react";
+import {
+  Dumbbell,
+  History,
+  Languages,
+  ListChecks,
+  Upload,
+  WholeWord,
+} from "lucide-react";
 
 export const Route = createRootRoute({
   component: RootRoute,
@@ -35,6 +42,18 @@ function RootRoute() {
           className="inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink"
         >
           <Upload size={18} strokeWidth={2.5} />
+        </Link>
+        <Link
+          to="/word-history"
+          aria-label="Word history"
+          title="Word history"
+          activeProps={{
+            className:
+              "!bg-action !text-action-ink hover:!bg-action-hover hover:!text-action-ink",
+          }}
+          className="inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink"
+        >
+          <ListChecks size={18} strokeWidth={2.5} />
         </Link>
         <Link
           to="/word"
