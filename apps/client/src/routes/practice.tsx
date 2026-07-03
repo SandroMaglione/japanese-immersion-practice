@@ -31,7 +31,7 @@ function PracticeRoute() {
   const isPracticeSubmitting = snapshot.matches("Submitting");
 
   return (
-    <div className="flex flex-col gap-5 sm:gap-6">
+    <div className="flex min-w-0 flex-col gap-5 sm:gap-6">
       {snapshot.matches("Loading") ? (
         <div className="py-10 text-center text-sm font-bold text-ink-muted">
           Loading practice data
@@ -104,7 +104,7 @@ function PracticeSession({
 
   if (currentItem === undefined && !isShowingResult) {
     return (
-      <section className="flex min-h-[calc(100svh-10rem)] flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
+      <section className="flex min-w-0 flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
         <div>
           <div className="text-lg font-black">No words yet</div>
           <div className="mt-1 text-sm font-semibold text-ink-muted">
@@ -122,8 +122,8 @@ function PracticeSession({
   }
 
   return (
-    <section className="grid min-h-[calc(100svh-10rem)] grid-rows-[3.25rem_minmax(0,1fr)] py-2 sm:min-h-[calc(100svh-12rem)] sm:grid-rows-[3.5rem_minmax(0,1fr)] sm:py-6">
-      <div className="mx-auto flex w-full max-w-xl items-center gap-3">
+    <section className="flex min-w-0 flex-col gap-8 py-2 sm:grid sm:min-h-[calc(100svh-12rem)] sm:grid-cols-[minmax(0,1fr)] sm:grid-rows-[3.5rem_minmax(0,1fr)] sm:gap-0 sm:py-6">
+      <div className="mx-auto flex w-full max-w-full min-w-0 items-center gap-3 sm:max-w-xl">
         <button
           type="button"
           aria-label="Refresh batch"
@@ -138,9 +138,9 @@ function PracticeSession({
         </button>
         {batch === undefined ? null : (
           <div className="grid min-w-0 flex-1 gap-2 text-left">
-            <div className="flex items-center justify-between gap-3 text-xs font-black uppercase text-ink-muted">
+            <div className="flex min-w-0 items-center justify-between gap-3 text-xs font-black uppercase text-ink-muted">
               <span>Batch {batch.batchNumber}</span>
-              <span>
+              <span className="shrink-0">
                 {batch.completedCount} / {batch.totalCount}
               </span>
             </div>
@@ -156,7 +156,7 @@ function PracticeSession({
         )}
       </div>
       <form
-        className="mx-auto flex min-h-0 w-full max-w-xl flex-col items-center justify-center gap-5 text-center sm:gap-8"
+        className="mx-auto flex min-h-0 w-full max-w-full min-w-0 flex-col items-center justify-start gap-5 text-center sm:max-w-xl sm:justify-center sm:gap-8"
         onSubmit={(event) => {
           event.preventDefault();
           actor.trigger.submit();
@@ -228,7 +228,7 @@ function PracticeSession({
             <ArrowRight aria-hidden="true" size={20} strokeWidth={2.5} />
           </button>
         ) : (
-          <div className="flex w-full gap-2">
+          <div className="flex w-full min-w-0 gap-2">
             <label className="sr-only" htmlFor="practice-response">
               Japanese word
             </label>
