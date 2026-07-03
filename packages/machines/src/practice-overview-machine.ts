@@ -1,14 +1,9 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText } from "@jip/services";
+import { FuriganaText, WordPracticeSelection } from "@jip/services";
 import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
 import type { MachineRuntime } from "./runtime.ts";
-
-const RecentAttemptLimit = 8;
-const RecentAttemptDecay = 0.7;
-const NewWordPriorityScore = 55;
-const PracticeBatchSize = 25;
 
 const PracticeBatchSummarySchema = Schema.Struct({
   id: IndexedDb.Domain.WordPracticeBatchId,
@@ -111,175 +106,39 @@ const _submissionResult = ({
     ? "correct"
     : "incorrect");
 
-const _sortSubmissionsBySubmittedAt = ({
-  submissions,
+const _toWordPracticeSelectionSubmission = ({
+  submission,
 }: {
-  readonly submissions: readonly WordPracticeSubmission[];
-}) =>
-  [...submissions].sort(
-    (left, right) =>
-      _toEpochMillis({ dateTime: left.submittedAt }) -
-      _toEpochMillis({ dateTime: right.submittedAt })
-  );
+  readonly submission: WordPracticeSubmission;
+}) => ({
+  result: _submissionResult({ submission }),
+  submittedAtMillis: _toEpochMillis({ dateTime: submission.submittedAt }),
+  wordText: submission.wordText,
+});
 
-const _submissionsForWord = ({
-  submissions,
-  wordText,
-}: {
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly wordText: string;
-}) => submissions.filter((submission) => submission.wordText === wordText);
-
-const _correctStreak = ({
-  submissions,
-}: {
-  readonly submissions: readonly WordPracticeSubmission[];
-}) => {
-  const sortedSubmissions = _sortSubmissionsBySubmittedAt({ submissions });
-  let streak = 0;
-
-  for (let index = sortedSubmissions.length - 1; index >= 0; index -= 1) {
-    const submission = sortedSubmissions[index];
-
-    if (submission === undefined) {
-      return streak;
-    }
-
-    if (_submissionResult({ submission }) !== "correct") {
-      return streak;
-    }
-
-    streak += 1;
-  }
-
-  return streak;
-};
-
-const _incorrectStreak = ({
-  submissions,
-}: {
-  readonly submissions: readonly WordPracticeSubmission[];
-}) => {
-  const sortedSubmissions = _sortSubmissionsBySubmittedAt({ submissions });
-  let streak = 0;
-
-  for (let index = sortedSubmissions.length - 1; index >= 0; index -= 1) {
-    const submission = sortedSubmissions[index];
-
-    if (submission === undefined) {
-      return streak;
-    }
-
-    if (_submissionResult({ submission }) !== "incorrect") {
-      return streak;
-    }
-
-    streak += 1;
-  }
-
-  return streak;
-};
-
-const _priorityScore = ({
-  submissions,
-}: {
-  readonly submissions: readonly WordPracticeSubmission[];
-}) => {
-  if (!EffectArray.isReadonlyArrayNonEmpty(submissions)) {
-    return NewWordPriorityScore;
-  }
-
-  const sortedSubmissions = _sortSubmissionsBySubmittedAt({ submissions });
-  const latestSubmission = sortedSubmissions[sortedSubmissions.length - 1];
-  const lastAttemptWasIncorrect =
-    latestSubmission !== undefined &&
-    _submissionResult({ submission: latestSubmission }) === "incorrect";
-  const recentSubmissions = sortedSubmissions
-    .slice(-RecentAttemptLimit)
-    .reverse();
-  let missedWeight = 0;
-  let totalWeight = 0;
-  let weight = 1;
-
-  for (const submission of recentSubmissions) {
-    totalWeight += weight;
-
-    if (_submissionResult({ submission }) === "incorrect") {
-      missedWeight += weight;
-    }
-
-    weight *= RecentAttemptDecay;
-  }
-
-  const weightedRecentMissRate =
-    totalWeight === 0 ? 0 : missedWeight / totalWeight;
-
-  return (
-    weightedRecentMissRate * 100 +
-    _incorrectStreak({ submissions }) * 20 +
-    (lastAttemptWasIncorrect ? 15 : 0) -
-    _correctStreak({ submissions }) * 8
-  );
-};
-
-const _buildPrioritizedWordOrder = ({
+const _buildWordPracticeWordOrder = ({
+  batches,
+  now,
   submissions,
   words,
 }: {
+  readonly batches: readonly WordPracticeBatch[];
+  readonly now: number;
   readonly submissions: readonly WordPracticeSubmission[];
   readonly words: readonly WordEntry[];
 }) =>
-  words
-    .map((word) => {
-      const wordSubmissions = _submissionsForWord({
-        submissions,
-        wordText: word.text,
-      });
-      const sortedSubmissions = _sortSubmissionsBySubmittedAt({
-        submissions: wordSubmissions,
-      });
-      const latestSubmission = sortedSubmissions[sortedSubmissions.length - 1];
-
-      return {
-        attemptCount: wordSubmissions.length,
-        lastSubmittedAtMillis:
-          latestSubmission === undefined
-            ? undefined
-            : _toEpochMillis({ dateTime: latestSubmission.submittedAt }),
-        priorityScore: _priorityScore({ submissions: wordSubmissions }),
-        word,
-      };
-    })
-    .sort((left, right) => {
-      const priorityDifference = right.priorityScore - left.priorityScore;
-
-      if (priorityDifference !== 0) {
-        return priorityDifference;
-      }
-
-      const attemptDifference = left.attemptCount - right.attemptCount;
-
-      if (attemptDifference !== 0) {
-        return attemptDifference;
-      }
-
-      const leftLastSubmittedAtMillis =
-        left.lastSubmittedAtMillis ??
-        _toEpochMillis({ dateTime: left.word.createdAt });
-      const rightLastSubmittedAtMillis =
-        right.lastSubmittedAtMillis ??
-        _toEpochMillis({ dateTime: right.word.createdAt });
-      const lastSubmittedAtDifference =
-        leftLastSubmittedAtMillis - rightLastSubmittedAtMillis;
-
-      return lastSubmittedAtDifference !== 0
-        ? lastSubmittedAtDifference
-        : _normalizePracticeText({ text: left.word.text }).localeCompare(
-            _normalizePracticeText({ text: right.word.text })
-          );
-    })
-    .slice(0, PracticeBatchSize)
-    .map((item) => item.word.text);
+  WordPracticeSelection.buildWordOrder({
+    batches: batches.map((batch) => ({
+      batchNumber: batch.batchNumber,
+      startedAtMillis: _toEpochMillis({ dateTime: batch.startedAt }),
+      wordOrder: batch.wordOrder,
+    })),
+    now,
+    submissions: submissions.map((submission) =>
+      _toWordPracticeSelectionSubmission({ submission })
+    ),
+    words: words.map((word) => ({ text: word.text })),
+  });
 
 const _makePracticeBatch = ({
   batchNumber,
@@ -363,10 +222,9 @@ const _buildPracticeQueue = ({
       return [];
     }
 
-    const submissionsForWord = _submissionsForWord({
-      submissions,
-      wordText,
-    });
+    const submissionsForWord = submissions
+      .filter((submission) => submission.wordText === wordText)
+      .map((submission) => _toWordPracticeSelectionSubmission({ submission }));
 
     return [
       {
@@ -374,9 +232,15 @@ const _buildPracticeQueue = ({
         batchId: batch.id,
         batchNumber: batch.batchNumber,
         batchPosition,
-        correctStreak: _correctStreak({ submissions: submissionsForWord }),
-        incorrectStreak: _incorrectStreak({ submissions: submissionsForWord }),
-        priorityScore: _priorityScore({ submissions: submissionsForWord }),
+        correctStreak: WordPracticeSelection.correctStreak({
+          submissions: submissionsForWord,
+        }),
+        incorrectStreak: WordPracticeSelection.incorrectStreak({
+          submissions: submissionsForWord,
+        }),
+        priorityScore: WordPracticeSelection.priorityScore({
+          submissions: submissionsForWord,
+        }),
         word,
       },
     ];
@@ -457,7 +321,9 @@ export const makePracticeOverviewMachine = ({
                   ? yield* _makePracticeBatch({
                       batchNumber: _nextBatchNumber({ batches }),
                       startedAt: now,
-                      wordOrder: _buildPrioritizedWordOrder({
+                      wordOrder: _buildWordPracticeWordOrder({
+                        batches,
+                        now,
                         submissions,
                         words,
                       }),
@@ -482,7 +348,9 @@ export const makePracticeOverviewMachine = ({
                 const nextBatch = yield* _makePracticeBatch({
                   batchNumber: _nextBatchNumber({ batches }),
                   startedAt: now,
-                  wordOrder: _buildPrioritizedWordOrder({
+                  wordOrder: _buildWordPracticeWordOrder({
+                    batches,
+                    now,
                     submissions,
                     words,
                   }),
@@ -545,7 +413,9 @@ export const makePracticeOverviewMachine = ({
               const nextBatch = yield* _makePracticeBatch({
                 batchNumber: _nextBatchNumber({ batches }),
                 startedAt: now,
-                wordOrder: _buildPrioritizedWordOrder({
+                wordOrder: _buildWordPracticeWordOrder({
+                  batches,
+                  now,
                   submissions,
                   words,
                 }),
@@ -653,7 +523,9 @@ export const makePracticeOverviewMachine = ({
                 const nextBatch = yield* _makePracticeBatch({
                   batchNumber: _nextBatchNumber({ batches }),
                   startedAt: submittedAt,
-                  wordOrder: _buildPrioritizedWordOrder({
+                  wordOrder: _buildWordPracticeWordOrder({
+                    batches,
+                    now: submittedAt,
                     submissions,
                     words,
                   }),
