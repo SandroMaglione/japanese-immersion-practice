@@ -20,8 +20,6 @@ const LibraryDataSchema = Schema.Struct({
 const KanjiLibraryViewSchema = Schema.Literals(["batch", "single"]);
 const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
 
-const DeleteWordConfirmationTimeoutMillis = 4_000;
-
 export const DeleteAllWordsConfirmationText = "delete all my words";
 
 const LibraryContextSchema = Schema.Struct({
@@ -1061,15 +1059,6 @@ export const makeLibraryMachine = ({
         },
       },
       ConfirmingWordDeletion: {
-        after: {
-          [DeleteWordConfirmationTimeoutMillis]: {
-            target: "Ready",
-            context: {
-              deletingWordText: undefined,
-              message: undefined,
-            },
-          },
-        },
         on: {
           cancelWordDeletion: {
             target: "Ready",

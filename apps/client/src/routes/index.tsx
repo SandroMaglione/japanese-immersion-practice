@@ -1,3 +1,5 @@
+import { Button } from "@base-ui/react/button";
+import { Input } from "@base-ui/react/input";
 import { PracticeHistoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
@@ -43,16 +45,16 @@ function HistoryRoute() {
       {snapshot.matches("Failure") ? (
         <div className="flex items-center justify-between gap-4 py-4 text-sm font-bold text-accent">
           <span>{snapshot.context.message}</span>
-          <button
+          <Button
             type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition hover:bg-field"
+            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
             onClick={() => {
               actor.trigger.refresh();
             }}
           >
             <RefreshCw size={15} strokeWidth={2.5} />
             Retry
-          </button>
+          </Button>
         </div>
       ) : null}
       {snapshot.matches("Ready") ? <HistoryList actor={actor} /> : null}
@@ -71,15 +73,16 @@ function HistorySearch({ actor }: { readonly actor: PracticeHistoryActor }) {
         size={18}
         strokeWidth={2.5}
       />
-      <input
+      <Input
+        aria-label="Search attempts"
         autoComplete="off"
         className="h-12 w-full rounded-md border border-line bg-field pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
         placeholder="Search attempts"
         type="search"
         value={query}
-        onChange={(event) => {
+        onValueChange={(query) => {
           actor.trigger.changeQuery({
-            query: event.currentTarget.value,
+            query,
           });
         }}
       />

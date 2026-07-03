@@ -1,3 +1,9 @@
+import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { Button } from "@base-ui/react/button";
+import { Field } from "@base-ui/react/field";
+import { Form } from "@base-ui/react/form";
+import { Tabs } from "@base-ui/react/tabs";
+import { Tooltip } from "@base-ui/react/tooltip";
 import { LibraryMachine } from "@jip/machines";
 import { useMachine } from "@xstate/react";
 import { Array as EffectArray } from "effect";
@@ -11,160 +17,197 @@ const libraryMachine = LibraryMachine.makeLibraryMachine({
   runtime: RuntimeClient,
 });
 
+const fieldControlClassName =
+  "h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 outline-none transition focus:border-ink-muted disabled:opacity-60";
+
+const textAreaControlClassName =
+  "w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 outline-none transition focus:border-ink-muted disabled:opacity-60";
+
+const quietButtonClassName =
+  "h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
+
+const primaryButtonClassName =
+  "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
+
+const iconButtonClassName =
+  "inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
+
+const tooltipPopupClassName =
+  "rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]";
+
+const dialogBackdropClassName = "fixed inset-0 bg-paper/70 backdrop-blur-sm";
+
+const dialogPopupClassName =
+  "fixed left-1/2 top-1/2 grid w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-md border border-line bg-panel p-5 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none";
+
+const _isLibraryView = ({ value }: { readonly value: unknown }) =>
+  value === "batch" || value === "single";
+
+const _entryTabClassName = ({ active }: { readonly active: boolean }) =>
+  `inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50 sm:px-3 ${
+    active
+      ? "bg-action text-action-ink hover:bg-action-hover"
+      : "text-ink-muted hover:bg-field hover:text-ink"
+  }`;
+
 export function KanjiLibraryContent() {
   const [snapshot, , actor] = useMachine(libraryMachine);
   const importingKanji = snapshot.matches("ImportingKanji");
   const savingKanji = snapshot.matches("SavingKanji");
   const kanjiBusy = importingKanji || savingKanji;
-  const showingBatchImport = snapshot.context.kanjiView === "batch";
 
   return (
-    <div className="flex flex-col gap-6">
-      <div
-        role="tablist"
+    <Tabs.Root
+      className="flex flex-col gap-6"
+      value={snapshot.context.kanjiView}
+      onValueChange={(value) => {
+        if (!_isLibraryView({ value })) {
+          return;
+        }
+
+        actor.trigger.selectKanjiView({ view: value });
+      }}
+    >
+      <Tabs.List
         aria-label="Kanji entry mode"
         className="flex min-w-0 rounded-md border border-line bg-panel p-1"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={showingBatchImport}
-          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
-            showingBatchImport
-              ? "bg-action text-action-ink hover:bg-action-hover"
-              : "text-ink-muted hover:bg-field hover:text-ink"
-          }`}
+        <Tabs.Tab
+          value="batch"
+          className={_entryTabClassName}
           disabled={kanjiBusy}
-          onClick={() => {
-            actor.trigger.selectKanjiView({ view: "batch" });
-          }}
         >
           <Upload size={16} strokeWidth={2.5} />
           Batch import
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!showingBatchImport}
-          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
-            showingBatchImport
-              ? "text-ink-muted hover:bg-field hover:text-ink"
-              : "bg-action text-action-ink hover:bg-action-hover"
-          }`}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="single"
+          className={_entryTabClassName}
           disabled={kanjiBusy}
-          onClick={() => {
-            actor.trigger.selectKanjiView({ view: "single" });
-          }}
         >
           <Save size={16} strokeWidth={2.5} />
           Single kanji
-        </button>
-      </div>
+        </Tabs.Tab>
+      </Tabs.List>
       {snapshot.context.message === undefined ? null : (
-        <div className="py-3 text-sm font-black text-ink-muted">
+        <div className="py-3 text-sm font-black text-ink-muted" role="status">
           {snapshot.context.message}
         </div>
       )}
       <section className="divide-y divide-line">
-        {showingBatchImport ? (
-          <form className="pb-6">
+        <Tabs.Panel value="batch">
+          <Form
+            className="pb-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              actor.trigger.importKanji();
+            }}
+          >
             <div className="grid gap-4">
-              <label className="grid gap-2">
-                <span className="text-sm font-black">JSON</span>
-                <textarea
-                  className="min-h-80 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+              <Field.Root className="grid gap-2" disabled={importingKanji}>
+                <Field.Label className="text-sm font-black">JSON</Field.Label>
+                <Field.Control
+                  render={<textarea />}
+                  className={`${textAreaControlClassName} min-h-80 font-mono text-sm leading-6 placeholder:text-ink-muted/70`}
                   disabled={importingKanji}
                   placeholder={LibraryMachine.KanjiImportJsonExample}
                   value={snapshot.context.kanjiImportJsonText}
-                  onChange={(event) => {
+                  onValueChange={(jsonText) => {
                     actor.trigger.changeKanjiImportJsonText({
-                      jsonText: event.currentTarget.value,
+                      jsonText,
                     });
                   }}
                 />
-              </label>
+              </Field.Root>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
+                <Button
                   type="button"
-                  className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink disabled:opacity-50"
+                  className={quietButtonClassName}
                   disabled={importingKanji}
+                  focusableWhenDisabled
                   onClick={() => {
                     actor.trigger.resetKanjiImport();
                   }}
                 >
                   Clear
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+                </Button>
+                <Button
+                  type="submit"
+                  className={primaryButtonClassName}
                   disabled={importingKanji}
-                  onClick={() => {
-                    actor.trigger.importKanji();
-                  }}
+                  focusableWhenDisabled
                 >
                   <Upload size={16} strokeWidth={2.5} />
                   {importingKanji ? "Importing" : "Import"}
-                </button>
+                </Button>
               </div>
             </div>
-          </form>
-        ) : (
-          <form className="pb-6">
+          </Form>
+        </Tabs.Panel>
+        <Tabs.Panel value="single">
+          <Form
+            className="pb-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              actor.trigger.saveKanji();
+            }}
+          >
             <div className="grid gap-4">
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Kanji</span>
-                <input
-                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted disabled:opacity-60"
+              <Field.Root className="grid gap-2" disabled={savingKanji}>
+                <Field.Label className="text-sm font-black">Kanji</Field.Label>
+                <Field.Control
+                  className={`${fieldControlClassName} text-lg font-black`}
                   disabled={savingKanji}
                   value={snapshot.context.kanjiSymbol}
-                  onChange={(event) => {
+                  onValueChange={(symbol) => {
                     actor.trigger.changeKanjiSymbol({
-                      symbol: event.currentTarget.value,
+                      symbol,
                     });
                   }}
                 />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Readings</span>
-                <input
-                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+              </Field.Root>
+              <Field.Root className="grid gap-2" disabled={savingKanji}>
+                <Field.Label className="text-sm font-black">
+                  Readings
+                </Field.Label>
+                <Field.Control
+                  className={`${fieldControlClassName} text-sm font-bold placeholder:text-ink-muted/70`}
                   disabled={savingKanji}
                   placeholder="た, だ"
                   value={snapshot.context.kanjiReadings}
-                  onChange={(event) => {
+                  onValueChange={(readings) => {
                     actor.trigger.changeKanjiReadings({
-                      readings: event.currentTarget.value,
+                      readings,
                     });
                   }}
                 />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Note</span>
-                <textarea
-                  className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted disabled:opacity-60"
+              </Field.Root>
+              <Field.Root className="grid gap-2" disabled={savingKanji}>
+                <Field.Label className="text-sm font-black">Note</Field.Label>
+                <Field.Control
+                  render={<textarea />}
+                  className={`${textAreaControlClassName} min-h-28 text-sm font-semibold leading-6`}
                   disabled={savingKanji}
                   value={snapshot.context.kanjiDescription}
-                  onChange={(event) => {
+                  onValueChange={(description) => {
                     actor.trigger.changeKanjiDescription({
-                      description: event.currentTarget.value,
+                      description,
                     });
                   }}
                 />
-              </label>
-              <button
-                type="button"
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
+              </Field.Root>
+              <Button
+                type="submit"
+                className={`${primaryButtonClassName} w-full sm:w-fit`}
                 disabled={savingKanji}
-                onClick={() => {
-                  actor.trigger.saveKanji();
-                }}
+                focusableWhenDisabled
               >
                 <Save size={16} strokeWidth={2.5} />
                 {savingKanji ? "Saving" : "Save kanji"}
-              </button>
+              </Button>
             </div>
-          </form>
-        )}
+          </Form>
+        </Tabs.Panel>
         <div className="pt-6">
           {!EffectArray.isReadonlyArrayNonEmpty(
             snapshot.context.kanjiEntries
@@ -194,7 +237,7 @@ export function KanjiLibraryContent() {
           )}
         </div>
       </section>
-    </div>
+    </Tabs.Root>
   );
 }
 
@@ -212,7 +255,6 @@ export function WordLibraryContent() {
   const hasWordEntries = EffectArray.isReadonlyArrayNonEmpty(
     snapshot.context.wordEntries
   );
-  const showingBatchImport = snapshot.context.wordView === "batch";
   const wordDeletionActive =
     confirmingAllWordsDeletion ||
     confirmingWordDeletion ||
@@ -220,208 +262,245 @@ export function WordLibraryContent() {
     deletingWord;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div
-        role="tablist"
+    <Tabs.Root
+      className="flex flex-col gap-6"
+      value={snapshot.context.wordView}
+      onValueChange={(value) => {
+        if (!_isLibraryView({ value })) {
+          return;
+        }
+
+        actor.trigger.selectWordView({ view: value });
+      }}
+    >
+      <Tabs.List
         aria-label="Word entry mode"
         className="flex min-w-0 rounded-md border border-line bg-panel p-1"
       >
-        <button
-          type="button"
-          role="tab"
-          aria-selected={showingBatchImport}
-          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
-            showingBatchImport
-              ? "bg-action text-action-ink hover:bg-action-hover"
-              : "text-ink-muted hover:bg-field hover:text-ink"
-          }`}
-          onClick={() => {
-            actor.trigger.selectWordView({ view: "batch" });
-          }}
+        <Tabs.Tab
+          value="batch"
+          className={_entryTabClassName}
           disabled={wordDeletionActive}
         >
           <Upload size={16} strokeWidth={2.5} />
           Batch import
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!showingBatchImport}
-          className={`inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition sm:px-3 ${
-            showingBatchImport
-              ? "text-ink-muted hover:bg-field hover:text-ink"
-              : "bg-action text-action-ink hover:bg-action-hover"
-          }`}
-          onClick={() => {
-            actor.trigger.selectWordView({ view: "single" });
-          }}
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="single"
+          className={_entryTabClassName}
           disabled={wordDeletionActive}
         >
           <Save size={16} strokeWidth={2.5} />
           Single word
-        </button>
-      </div>
+        </Tabs.Tab>
+      </Tabs.List>
       {snapshot.context.message === undefined ? null : (
-        <div className="py-3 text-sm font-black text-ink-muted">
+        <div className="py-3 text-sm font-black text-ink-muted" role="status">
           {snapshot.context.message}
         </div>
       )}
       <section className="divide-y divide-line">
-        {showingBatchImport ? (
-          <form className="pb-6">
+        <Tabs.Panel value="batch">
+          <Form
+            className="pb-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              actor.trigger.importWords();
+            }}
+          >
             <div className="grid gap-4">
-              <label className="grid gap-2">
-                <span className="text-sm font-black">JSON</span>
-                <textarea
-                  className="min-h-80 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 font-mono text-sm leading-6 outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
+              <Field.Root
+                className="grid gap-2"
+                disabled={importingWords || wordDeletionActive}
+              >
+                <Field.Label className="text-sm font-black">JSON</Field.Label>
+                <Field.Control
+                  render={<textarea />}
+                  className={`${textAreaControlClassName} min-h-80 font-mono text-sm leading-6 placeholder:text-ink-muted/70`}
                   disabled={importingWords || wordDeletionActive}
                   placeholder={LibraryMachine.WordImportJsonExample}
                   value={snapshot.context.wordImportJsonText}
-                  onChange={(event) => {
+                  onValueChange={(jsonText) => {
                     actor.trigger.changeWordImportJsonText({
-                      jsonText: event.currentTarget.value,
+                      jsonText,
                     });
                   }}
                 />
-              </label>
+              </Field.Root>
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
+                <Button
                   type="button"
-                  className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink disabled:opacity-50"
+                  className={quietButtonClassName}
                   disabled={importingWords || wordDeletionActive}
+                  focusableWhenDisabled
                   onClick={() => {
                     actor.trigger.resetWordImport();
                   }}
                 >
                   Clear
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50"
+                </Button>
+                <Button
+                  type="submit"
+                  className={primaryButtonClassName}
                   disabled={importingWords || wordDeletionActive}
-                  onClick={() => {
-                    actor.trigger.importWords();
-                  }}
+                  focusableWhenDisabled
                 >
                   <Upload size={16} strokeWidth={2.5} />
                   {importingWords ? "Importing" : "Import"}
-                </button>
+                </Button>
               </div>
             </div>
-          </form>
-        ) : (
-          <form className="pb-6">
+          </Form>
+        </Tabs.Panel>
+        <Tabs.Panel value="single">
+          <Form
+            className="pb-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              actor.trigger.saveWord();
+            }}
+          >
             <div className="grid gap-4">
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Word</span>
-                <input
-                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted"
+              <Field.Root className="grid gap-2" disabled={wordDeletionActive}>
+                <Field.Label className="text-sm font-black">Word</Field.Label>
+                <Field.Control
+                  className={`${fieldControlClassName} text-lg font-black`}
                   disabled={wordDeletionActive}
                   value={snapshot.context.wordText}
-                  onChange={(event) => {
+                  onValueChange={(text) => {
                     actor.trigger.changeWordText({
-                      text: event.currentTarget.value,
+                      text,
                     });
                   }}
                 />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Translation</span>
-                <input
-                  className="h-11 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted"
+              </Field.Root>
+              <Field.Root className="grid gap-2" disabled={wordDeletionActive}>
+                <Field.Label className="text-sm font-black">
+                  Translation
+                </Field.Label>
+                <Field.Control
+                  className={`${fieldControlClassName} text-sm font-bold`}
                   disabled={wordDeletionActive}
                   value={snapshot.context.wordTranslation}
-                  onChange={(event) => {
+                  onValueChange={(translation) => {
                     actor.trigger.changeWordTranslation({
-                      translation: event.currentTarget.value,
+                      translation,
                     });
                   }}
                 />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-sm font-black">Note</span>
-                <textarea
-                  className="min-h-28 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted"
+              </Field.Root>
+              <Field.Root className="grid gap-2" disabled={wordDeletionActive}>
+                <Field.Label className="text-sm font-black">Note</Field.Label>
+                <Field.Control
+                  render={<textarea />}
+                  className={`${textAreaControlClassName} min-h-28 text-sm font-semibold leading-6`}
                   disabled={wordDeletionActive}
                   value={snapshot.context.wordDescription}
-                  onChange={(event) => {
+                  onValueChange={(description) => {
                     actor.trigger.changeWordDescription({
-                      description: event.currentTarget.value,
+                      description,
                     });
                   }}
                 />
-              </label>
-              <button
-                type="button"
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover disabled:opacity-50 sm:w-fit"
+              </Field.Root>
+              <Button
+                type="submit"
+                className={`${primaryButtonClassName} w-full sm:w-fit`}
                 disabled={savingWord || wordDeletionActive}
-                onClick={() => {
-                  actor.trigger.saveWord();
-                }}
+                focusableWhenDisabled
               >
                 <Save size={16} strokeWidth={2.5} />
                 {savingWord ? "Saving" : "Save word"}
-              </button>
+              </Button>
             </div>
-          </form>
-        )}
+          </Form>
+        </Tabs.Panel>
         <div className="pt-6">
           {hasWordEntries ? (
             <div className="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <button
-                type="button"
-                className={`inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md px-4 text-sm font-black transition disabled:opacity-50 ${
-                  confirmingAllWordsDeletion || deletingAllWords
-                    ? "bg-accent-soft text-accent hover:bg-accent-soft"
-                    : "border border-line bg-panel text-ink-muted hover:text-ink"
-                }`}
-                disabled={
-                  confirmingWordDeletion ||
-                  deletingAllWords ||
-                  deletingWord ||
-                  importingWords ||
-                  savingWord ||
-                  updatingWord
-                }
-                onClick={() => {
-                  actor.trigger.deleteAllWords();
+              <AlertDialog.Root
+                open={confirmingAllWordsDeletion || deletingAllWords}
+                onOpenChange={(open) => {
+                  if (open) {
+                    actor.trigger.deleteAllWords();
+                    return;
+                  }
+
+                  if (!deletingAllWords) {
+                    actor.trigger.cancelDeleteAllWords();
+                  }
                 }}
               >
-                <Trash2 size={16} strokeWidth={2.5} />
-                {deletingAllWords
-                  ? "Deleting"
-                  : confirmingAllWordsDeletion
-                    ? "Confirm"
-                    : "Delete all"}
-              </button>
-              {confirmingAllWordsDeletion || deletingAllWords ? (
-                <div className="flex min-w-0 gap-2 sm:w-96">
-                  <input
-                    className="h-10 min-w-0 flex-1 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
-                    aria-label="Delete all words confirmation"
-                    disabled={deletingAllWords}
-                    placeholder={LibraryMachine.DeleteAllWordsConfirmationText}
-                    value={snapshot.context.deleteAllWordsConfirmation}
-                    onChange={(event) => {
-                      actor.trigger.changeDeleteAllWordsConfirmation({
-                        confirmation: event.currentTarget.value,
-                      });
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Cancel delete all words"
-                    title="Cancel delete all words"
-                    className="inline-flex size-10 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
-                    disabled={deletingAllWords}
-                    onClick={() => {
-                      actor.trigger.cancelDeleteAllWords();
-                    }}
-                  >
-                    <X size={16} strokeWidth={2.5} />
-                  </button>
-                </div>
-              ) : null}
+                <AlertDialog.Trigger
+                  className="inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
+                  disabled={
+                    confirmingWordDeletion ||
+                    deletingAllWords ||
+                    deletingWord ||
+                    importingWords ||
+                    savingWord ||
+                    updatingWord
+                  }
+                >
+                  <Trash2 size={16} strokeWidth={2.5} />
+                  {deletingAllWords ? "Deleting" : "Delete all"}
+                </AlertDialog.Trigger>
+                <AlertDialog.Portal>
+                  <AlertDialog.Backdrop className={dialogBackdropClassName} />
+                  <AlertDialog.Popup className={dialogPopupClassName}>
+                    <div className="grid gap-2">
+                      <AlertDialog.Title className="text-lg font-black">
+                        Delete all words?
+                      </AlertDialog.Title>
+                      <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
+                        Type the confirmation phrase to remove every word entry.
+                      </AlertDialog.Description>
+                    </div>
+                    <Field.Root
+                      className="grid gap-2"
+                      disabled={deletingAllWords}
+                    >
+                      <Field.Label className="text-sm font-black">
+                        Confirmation
+                      </Field.Label>
+                      <Field.Control
+                        className={`${fieldControlClassName} text-sm font-bold placeholder:text-ink-muted/70`}
+                        aria-label="Delete all words confirmation"
+                        disabled={deletingAllWords}
+                        placeholder={
+                          LibraryMachine.DeleteAllWordsConfirmationText
+                        }
+                        value={snapshot.context.deleteAllWordsConfirmation}
+                        onValueChange={(confirmation) => {
+                          actor.trigger.changeDeleteAllWordsConfirmation({
+                            confirmation,
+                          });
+                        }}
+                      />
+                    </Field.Root>
+                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                      <AlertDialog.Close
+                        className={quietButtonClassName}
+                        disabled={deletingAllWords}
+                      >
+                        Cancel
+                      </AlertDialog.Close>
+                      <Button
+                        type="button"
+                        className={`${primaryButtonClassName} bg-accent-soft text-accent hover:bg-accent-soft`}
+                        disabled={deletingAllWords}
+                        focusableWhenDisabled
+                        onClick={() => {
+                          actor.trigger.deleteAllWords();
+                        }}
+                      >
+                        <Trash2 size={16} strokeWidth={2.5} />
+                        {deletingAllWords ? "Deleting" : "Delete all"}
+                      </Button>
+                    </div>
+                  </AlertDialog.Popup>
+                </AlertDialog.Portal>
+              </AlertDialog.Root>
             </div>
           ) : null}
           {!hasWordEntries ? (
@@ -433,6 +512,9 @@ export function WordLibraryContent() {
               {snapshot.context.wordEntries.map((entry) => {
                 const confirmingDeletionForWord =
                   confirmingWordDeletion &&
+                  snapshot.context.deletingWordText === entry.text;
+                const deletingThisWord =
+                  deletingWord &&
                   snapshot.context.deletingWordText === entry.text;
                 const editingWord =
                   snapshot.context.editingWordOriginalText === entry.text;
@@ -448,51 +530,61 @@ export function WordLibraryContent() {
                     >
                       {editingWord ? (
                         <div className="grid min-w-0 flex-1 gap-3">
-                          <label className="grid gap-2">
-                            <span className="text-xs font-black text-ink-muted">
+                          <Field.Root
+                            className="grid gap-2"
+                            disabled={updatingWord}
+                          >
+                            <Field.Label className="text-xs font-black text-ink-muted">
                               Word
-                            </span>
-                            <input
-                              className="h-10 w-full min-w-0 rounded-md border border-line bg-field px-3 text-lg font-black outline-none transition focus:border-ink-muted disabled:opacity-60"
+                            </Field.Label>
+                            <Field.Control
+                              className={`${fieldControlClassName} h-10 text-lg font-black`}
                               disabled={updatingWord}
                               value={snapshot.context.editingWordText}
-                              onChange={(event) => {
+                              onValueChange={(text) => {
                                 actor.trigger.changeEditingWordText({
-                                  text: event.currentTarget.value,
+                                  text,
                                 });
                               }}
                             />
-                          </label>
-                          <label className="grid gap-2">
-                            <span className="text-xs font-black text-ink-muted">
+                          </Field.Root>
+                          <Field.Root
+                            className="grid gap-2"
+                            disabled={updatingWord}
+                          >
+                            <Field.Label className="text-xs font-black text-ink-muted">
                               Translation
-                            </span>
-                            <input
-                              className="h-10 w-full min-w-0 rounded-md border border-line bg-field px-3 text-sm font-bold outline-none transition focus:border-ink-muted disabled:opacity-60"
+                            </Field.Label>
+                            <Field.Control
+                              className={`${fieldControlClassName} h-10 text-sm font-bold`}
                               disabled={updatingWord}
                               value={snapshot.context.editingWordTranslation}
-                              onChange={(event) => {
+                              onValueChange={(translation) => {
                                 actor.trigger.changeEditingWordTranslation({
-                                  translation: event.currentTarget.value,
+                                  translation,
                                 });
                               }}
                             />
-                          </label>
-                          <label className="grid gap-2">
-                            <span className="text-xs font-black text-ink-muted">
+                          </Field.Root>
+                          <Field.Root
+                            className="grid gap-2"
+                            disabled={updatingWord}
+                          >
+                            <Field.Label className="text-xs font-black text-ink-muted">
                               Note
-                            </span>
-                            <textarea
-                              className="min-h-24 w-full min-w-0 resize-y rounded-md border border-line bg-field px-3 py-3 text-sm font-semibold leading-6 outline-none transition focus:border-ink-muted disabled:opacity-60"
+                            </Field.Label>
+                            <Field.Control
+                              render={<textarea />}
+                              className={`${textAreaControlClassName} min-h-24 text-sm font-semibold leading-6`}
                               disabled={updatingWord}
                               value={snapshot.context.editingWordDescription}
-                              onChange={(event) => {
+                              onValueChange={(description) => {
                                 actor.trigger.changeEditingWordDescription({
-                                  description: event.currentTarget.value,
+                                  description,
                                 });
                               }}
                             />
-                          </label>
+                          </Field.Root>
                         </div>
                       ) : (
                         <div className="min-w-0">
@@ -518,76 +610,196 @@ export function WordLibraryContent() {
                       <div className="flex shrink-0 items-center sm:self-stretch">
                         {editingWord ? (
                           <div className="flex w-full justify-end gap-1 sm:w-auto">
-                            <button
-                              type="button"
-                              aria-label="Save word changes"
-                              title="Save word changes"
-                              className="inline-flex size-9 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover disabled:opacity-50"
-                              disabled={updatingWord}
-                              onClick={() => {
-                                actor.trigger.updateWord();
-                              }}
-                            >
-                              <Check size={16} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label="Cancel word edit"
-                              title="Cancel word edit"
-                              className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
-                              disabled={updatingWord}
-                              onClick={() => {
-                                actor.trigger.cancelWordEdit();
-                              }}
-                            >
-                              <X size={16} strokeWidth={2.5} />
-                            </button>
+                            <Tooltip.Root>
+                              <Tooltip.Trigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    aria-label="Save word changes"
+                                    className="inline-flex size-9 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
+                                    disabled={updatingWord}
+                                    focusableWhenDisabled
+                                    onClick={() => {
+                                      actor.trigger.updateWord();
+                                    }}
+                                  />
+                                }
+                              >
+                                <Check size={16} strokeWidth={2.5} />
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Positioner sideOffset={8}>
+                                  <Tooltip.Popup
+                                    className={tooltipPopupClassName}
+                                  >
+                                    Save word changes
+                                  </Tooltip.Popup>
+                                </Tooltip.Positioner>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                            <Tooltip.Root>
+                              <Tooltip.Trigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    aria-label="Cancel word edit"
+                                    className={iconButtonClassName}
+                                    disabled={updatingWord}
+                                    focusableWhenDisabled
+                                    onClick={() => {
+                                      actor.trigger.cancelWordEdit();
+                                    }}
+                                  />
+                                }
+                              >
+                                <X size={16} strokeWidth={2.5} />
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Positioner sideOffset={8}>
+                                  <Tooltip.Popup
+                                    className={tooltipPopupClassName}
+                                  >
+                                    Cancel word edit
+                                  </Tooltip.Popup>
+                                </Tooltip.Positioner>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
                           </div>
                         ) : (
                           <div className="flex gap-1">
-                            <button
-                              type="button"
-                              aria-label="Edit word"
-                              title="Edit word"
-                              className="inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink disabled:opacity-50"
-                              disabled={updatingWord || wordDeletionActive}
-                              onClick={() => {
-                                actor.trigger.editWord({ text: entry.text });
+                            <Tooltip.Root>
+                              <Tooltip.Trigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    aria-label="Edit word"
+                                    className={iconButtonClassName}
+                                    disabled={
+                                      updatingWord || wordDeletionActive
+                                    }
+                                    focusableWhenDisabled
+                                    onClick={() => {
+                                      actor.trigger.editWord({
+                                        text: entry.text,
+                                      });
+                                    }}
+                                  />
+                                }
+                              >
+                                <Pencil size={16} strokeWidth={2.5} />
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Positioner sideOffset={8}>
+                                  <Tooltip.Popup
+                                    className={tooltipPopupClassName}
+                                  >
+                                    Edit word
+                                  </Tooltip.Popup>
+                                </Tooltip.Positioner>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                            <AlertDialog.Root
+                              open={
+                                confirmingDeletionForWord || deletingThisWord
+                              }
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  actor.trigger.deleteWord({
+                                    text: entry.text,
+                                  });
+                                  return;
+                                }
+
+                                if (
+                                  confirmingDeletionForWord &&
+                                  !deletingWord
+                                ) {
+                                  actor.trigger.cancelWordDeletion();
+                                }
                               }}
                             >
-                              <Pencil size={16} strokeWidth={2.5} />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={
-                                confirmingDeletionForWord
-                                  ? "Confirm delete word"
-                                  : "Delete word"
-                              }
-                              title={
-                                confirmingDeletionForWord
-                                  ? "Confirm delete word"
-                                  : "Delete word"
-                              }
-                              className={`inline-flex size-9 items-center justify-center rounded-md transition disabled:opacity-50 ${
-                                confirmingDeletionForWord
-                                  ? "bg-accent-soft text-accent hover:bg-accent-soft"
-                                  : "border border-line bg-panel text-ink-muted hover:text-ink"
-                              }`}
-                              disabled={
-                                updatingWord ||
-                                deletingWord ||
-                                deletingAllWords ||
-                                confirmingAllWordsDeletion ||
-                                (confirmingWordDeletion &&
-                                  !confirmingDeletionForWord)
-                              }
-                              onClick={() => {
-                                actor.trigger.deleteWord({ text: entry.text });
-                              }}
-                            >
-                              <Trash2 size={16} strokeWidth={2.5} />
-                            </button>
+                              <Tooltip.Root>
+                                <Tooltip.Trigger
+                                  render={
+                                    <AlertDialog.Trigger
+                                      aria-label="Delete word"
+                                      className={iconButtonClassName}
+                                      disabled={
+                                        updatingWord ||
+                                        deletingWord ||
+                                        deletingAllWords ||
+                                        confirmingAllWordsDeletion ||
+                                        (confirmingWordDeletion &&
+                                          !confirmingDeletionForWord)
+                                      }
+                                    />
+                                  }
+                                >
+                                  <Trash2 size={16} strokeWidth={2.5} />
+                                </Tooltip.Trigger>
+                                <Tooltip.Portal>
+                                  <Tooltip.Positioner sideOffset={8}>
+                                    <Tooltip.Popup
+                                      className={tooltipPopupClassName}
+                                    >
+                                      Delete word
+                                    </Tooltip.Popup>
+                                  </Tooltip.Positioner>
+                                </Tooltip.Portal>
+                              </Tooltip.Root>
+                              <AlertDialog.Portal>
+                                <AlertDialog.Backdrop
+                                  className={dialogBackdropClassName}
+                                />
+                                <AlertDialog.Popup
+                                  className={dialogPopupClassName}
+                                >
+                                  <div className="grid gap-2">
+                                    <AlertDialog.Title className="text-lg font-black">
+                                      Delete this word?
+                                    </AlertDialog.Title>
+                                    <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
+                                      This removes the word from your library.
+                                    </AlertDialog.Description>
+                                  </div>
+                                  <div className="rounded-md border border-line bg-field px-3 py-3">
+                                    <div className="text-lg font-black">
+                                      <KanjiWordText
+                                        kanjiEntries={
+                                          snapshot.context.kanjiEntries
+                                        }
+                                        text={entry.text}
+                                      />
+                                    </div>
+                                    <div className="text-sm font-black text-accent">
+                                      {entry.translation}
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                                    <AlertDialog.Close
+                                      className={quietButtonClassName}
+                                      disabled={deletingThisWord}
+                                    >
+                                      Cancel
+                                    </AlertDialog.Close>
+                                    <Button
+                                      type="button"
+                                      className={`${primaryButtonClassName} bg-accent-soft text-accent hover:bg-accent-soft`}
+                                      disabled={deletingThisWord}
+                                      focusableWhenDisabled
+                                      onClick={() => {
+                                        actor.trigger.deleteWord({
+                                          text: entry.text,
+                                        });
+                                      }}
+                                    >
+                                      <Trash2 size={16} strokeWidth={2.5} />
+                                      {deletingThisWord ? "Deleting" : "Delete"}
+                                    </Button>
+                                  </div>
+                                </AlertDialog.Popup>
+                              </AlertDialog.Portal>
+                            </AlertDialog.Root>
                           </div>
                         )}
                       </div>
@@ -599,6 +811,6 @@ export function WordLibraryContent() {
           )}
         </div>
       </section>
-    </div>
+    </Tabs.Root>
   );
 }

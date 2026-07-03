@@ -10,6 +10,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@base-ui/react": "^1.6.0",
     "@jip/indexeddb": "workspace:^",
     "@jip/machines": "workspace:^",
     "@jip/services": "workspace:^",
