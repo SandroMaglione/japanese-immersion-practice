@@ -64,3 +64,106 @@
     color: var(--color-ink);
   }
 }
+
+@layer components {
+  .word-history-attempt-strip {
+    container-type: inline-size;
+  }
+
+  .word-history-attempt-hidden-count,
+  .word-history-attempt-icon {
+    display: none;
+  }
+
+  .word-history-attempt-hidden-count-0 {
+    display: inline-flex;
+  }
+
+  @container (min-width: 4rem) {
+    .word-history-attempt-icon-0,
+    .word-history-attempt-hidden-count-1 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-0 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 5.75rem) {
+    .word-history-attempt-icon-1,
+    .word-history-attempt-hidden-count-2 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-1 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 7.5rem) {
+    .word-history-attempt-icon-2,
+    .word-history-attempt-hidden-count-3 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-2 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 9.25rem) {
+    .word-history-attempt-icon-3,
+    .word-history-attempt-hidden-count-4 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-3 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 11rem) {
+    .word-history-attempt-icon-4,
+    .word-history-attempt-hidden-count-5 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-4 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 12.75rem) {
+    .word-history-attempt-icon-5,
+    .word-history-attempt-hidden-count-6 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-5 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 14.5rem) {
+    .word-history-attempt-icon-6,
+    .word-history-attempt-hidden-count-7 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-6 {
+      display: none;
+    }
+  }
+
+  @container (min-width: 16.25rem) {
+    .word-history-attempt-icon-7,
+    .word-history-attempt-hidden-count-8 {
+      display: inline-flex;
+    }
+
+    .word-history-attempt-hidden-count-7 {
+      display: none;
+    }
+  }
+}

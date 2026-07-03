@@ -1,5 +1,5 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText } from "@jip/services";
+import { FuriganaText, WordPracticeSelection } from "@jip/services";
 import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
@@ -19,7 +19,8 @@ const WordPracticeHistorySummarySchema = Schema.Struct({
   correctStreak: Schema.Number,
   incorrectCount: Schema.Number,
   incorrectStreak: Schema.Number,
-  lastSubmittedAt: Schema.DateTimeUtcFromMillis,
+  lastSubmittedAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
+  selectionWeight: Schema.Number,
   word: IndexedDb.Domain.WordEntry,
 });
 
@@ -32,6 +33,21 @@ const WordPracticeHistoryContextSchema = Schema.Struct({
 
 const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
   DateTime.toEpochMillis(dateTime);
+
+const _submissionResult = ({
+  submission,
+}: {
+  readonly submission: typeof IndexedDb.Domain.WordPracticeSubmission.Type;
+}): IndexedDb.Domain.WordPracticeResult =>
+  submission.result ??
+  (FuriganaText.normalizePlainText({
+    text: submission.submittedText,
+  }) ===
+  FuriganaText.normalizePlainText({
+    text: submission.wordText,
+  })
+    ? "correct"
+    : "incorrect");
 
 const _filterSummaries = ({
   query,
@@ -95,7 +111,27 @@ export const makeWordPracticeHistoryMachine = ({
               const batches = yield* store.listWordPracticeBatches();
               const submissions = yield* store.listWordPracticeSubmissions();
               const words = yield* store.listWordEntries();
-              const summaries = words.flatMap((word) => {
+              const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const selectionCandidates =
+                WordPracticeSelection.buildSelectionCandidates({
+                  batches: batches.map((batch) => ({
+                    batchNumber: batch.batchNumber,
+                    startedAtMillis: _toEpochMillis({
+                      dateTime: batch.startedAt,
+                    }),
+                    wordOrder: batch.wordOrder,
+                  })),
+                  now,
+                  submissions: submissions.map((submission) => ({
+                    result: _submissionResult({ submission }),
+                    submittedAtMillis: _toEpochMillis({
+                      dateTime: submission.submittedAt,
+                    }),
+                    wordText: submission.wordText,
+                  })),
+                  words: words.map((word) => ({ text: word.text })),
+                });
+              const summaries = words.map((word) => {
                 const attempts = submissions
                   .filter((submission) => submission.wordText === word.text)
                   .sort(
@@ -111,16 +147,7 @@ export const makeWordPracticeHistoryMachine = ({
                             (practiceBatch) =>
                               practiceBatch.id === submission.batchId
                           );
-                    const result =
-                      submission.result ??
-                      (FuriganaText.normalizePlainText({
-                        text: submission.submittedText,
-                      }) ===
-                      FuriganaText.normalizePlainText({
-                        text: submission.wordText,
-                      })
-                        ? "correct"
-                        : "incorrect");
+                    const result = _submissionResult({ submission });
 
                     return {
                       ...(batch === undefined ? {} : { batch }),
@@ -129,11 +156,6 @@ export const makeWordPracticeHistoryMachine = ({
                     };
                   });
                 const latestAttempt = attempts[0];
-
-                if (latestAttempt === undefined) {
-                  return [];
-                }
-
                 const correctCount = attempts.filter(
                   (attempt) => attempt.result === "correct"
                 ).length;
@@ -157,28 +179,50 @@ export const makeWordPracticeHistoryMachine = ({
                   incorrectStreak += 1;
                 }
 
-                return [
-                  {
-                    accuracy: Math.round(
-                      (correctCount / attempts.length) * 100
-                    ),
-                    attemptCount: attempts.length,
-                    attempts,
-                    correctCount,
-                    correctStreak,
-                    incorrectCount: attempts.length - correctCount,
-                    incorrectStreak,
-                    lastSubmittedAt: latestAttempt.submission.submittedAt,
-                    word,
-                  },
-                ];
+                return {
+                  accuracy: EffectArray.isReadonlyArrayNonEmpty(attempts)
+                    ? Math.round((correctCount / attempts.length) * 100)
+                    : 0,
+                  attemptCount: attempts.length,
+                  attempts,
+                  correctCount,
+                  correctStreak,
+                  incorrectCount: attempts.length - correctCount,
+                  incorrectStreak,
+                  ...(latestAttempt === undefined
+                    ? {}
+                    : {
+                        lastSubmittedAt: latestAttempt.submission.submittedAt,
+                      }),
+                  selectionWeight:
+                    selectionCandidates.find(
+                      (candidate) => candidate.word.text === word.text
+                    )?.selectionWeight ?? 0,
+                  word,
+                };
               });
 
-              return summaries.sort(
-                (left, right) =>
-                  _toEpochMillis({ dateTime: right.lastSubmittedAt }) -
-                  _toEpochMillis({ dateTime: left.lastSubmittedAt })
-              );
+              return summaries.sort((left, right) => {
+                const selectionWeightDifference =
+                  right.selectionWeight - left.selectionWeight;
+
+                if (selectionWeightDifference !== 0) {
+                  return selectionWeightDifference;
+                }
+
+                return (
+                  (right.lastSubmittedAt === undefined
+                    ? 0
+                    : _toEpochMillis({
+                        dateTime: right.lastSubmittedAt,
+                      })) -
+                  (left.lastSubmittedAt === undefined
+                    ? 0
+                    : _toEpochMillis({
+                        dateTime: left.lastSubmittedAt,
+                      }))
+                );
+              });
             })
           ),
       }),

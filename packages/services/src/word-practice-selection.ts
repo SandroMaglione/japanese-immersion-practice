@@ -1,7 +1,17 @@
-type WordPracticeSelectionSubmission = {
+export type WordPracticeSelectionSubmission = {
   readonly result: "correct" | "incorrect";
   readonly submittedAtMillis: number;
   readonly wordText: string;
+};
+
+type WordPracticeSelectionBatch = {
+  readonly batchNumber: number;
+  readonly startedAtMillis: number;
+  readonly wordOrder: readonly string[];
+};
+
+type WordPracticeSelectionWord = {
+  readonly text: string;
 };
 
 const RecentAttemptLimit = 8;
@@ -165,16 +175,84 @@ export const buildWordOrder = ({
   submissions,
   words,
 }: {
-  readonly batches: readonly {
-    readonly batchNumber: number;
-    readonly startedAtMillis: number;
-    readonly wordOrder: readonly string[];
-  }[];
+  readonly batches: readonly WordPracticeSelectionBatch[];
   readonly now: number;
   readonly submissions: readonly WordPracticeSelectionSubmission[];
-  readonly words: readonly {
-    readonly text: string;
-  }[];
+  readonly words: readonly WordPracticeSelectionWord[];
+}) => {
+  const candidates = buildSelectionCandidates({
+    batches,
+    now,
+    submissions,
+    words,
+  });
+  const remainingCandidates = [...candidates];
+  const selectedWordTexts: string[] = [];
+
+  while (
+    selectedWordTexts.length < PracticeBatchSize &&
+    remainingCandidates[0] !== undefined
+  ) {
+    const totalWeight = remainingCandidates.reduce(
+      (total, candidate) => total + candidate.selectionWeight,
+      0
+    );
+    let remainingWeight = _randomFraction() * totalWeight;
+    let selectedIndex = remainingCandidates.length - 1;
+
+    for (let index = 0; index < remainingCandidates.length; index += 1) {
+      const candidate = remainingCandidates[index];
+
+      if (candidate === undefined) {
+        continue;
+      }
+
+      remainingWeight -= candidate.selectionWeight;
+
+      if (remainingWeight <= 0) {
+        selectedIndex = index;
+        break;
+      }
+    }
+
+    const selectedCandidate = remainingCandidates[selectedIndex];
+
+    if (selectedCandidate === undefined) {
+      break;
+    }
+
+    remainingCandidates.splice(selectedIndex, 1);
+    selectedWordTexts.push(selectedCandidate.word.text);
+  }
+
+  const shuffledWordOrder = [...selectedWordTexts];
+
+  for (let index = shuffledWordOrder.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(_randomFraction() * (index + 1));
+    const currentWordText = shuffledWordOrder[index];
+    const swapWordText = shuffledWordOrder[swapIndex];
+
+    if (currentWordText === undefined || swapWordText === undefined) {
+      continue;
+    }
+
+    shuffledWordOrder[index] = swapWordText;
+    shuffledWordOrder[swapIndex] = currentWordText;
+  }
+
+  return shuffledWordOrder;
+};
+
+export const buildSelectionCandidates = ({
+  batches,
+  now,
+  submissions,
+  words,
+}: {
+  readonly batches: readonly WordPracticeSelectionBatch[];
+  readonly now: number;
+  readonly submissions: readonly WordPracticeSelectionSubmission[];
+  readonly words: readonly WordPracticeSelectionWord[];
 }) => {
   const sortedSubmissions = _sortSubmissionsBySubmittedAt({ submissions });
   const latestBatchNumber = batches.reduce(
@@ -272,59 +350,6 @@ export const buildWordOrder = ({
       word,
     };
   });
-  const remainingCandidates = [...candidates];
-  const selectedWordTexts: string[] = [];
 
-  while (
-    selectedWordTexts.length < PracticeBatchSize &&
-    remainingCandidates[0] !== undefined
-  ) {
-    const totalWeight = remainingCandidates.reduce(
-      (total, candidate) => total + candidate.selectionWeight,
-      0
-    );
-    let remainingWeight = _randomFraction() * totalWeight;
-    let selectedIndex = remainingCandidates.length - 1;
-
-    for (let index = 0; index < remainingCandidates.length; index += 1) {
-      const candidate = remainingCandidates[index];
-
-      if (candidate === undefined) {
-        continue;
-      }
-
-      remainingWeight -= candidate.selectionWeight;
-
-      if (remainingWeight <= 0) {
-        selectedIndex = index;
-        break;
-      }
-    }
-
-    const selectedCandidate = remainingCandidates[selectedIndex];
-
-    if (selectedCandidate === undefined) {
-      break;
-    }
-
-    remainingCandidates.splice(selectedIndex, 1);
-    selectedWordTexts.push(selectedCandidate.word.text);
-  }
-
-  const shuffledWordOrder = [...selectedWordTexts];
-
-  for (let index = shuffledWordOrder.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(_randomFraction() * (index + 1));
-    const currentWordText = shuffledWordOrder[index];
-    const swapWordText = shuffledWordOrder[swapIndex];
-
-    if (currentWordText === undefined || swapWordText === undefined) {
-      continue;
-    }
-
-    shuffledWordOrder[index] = swapWordText;
-    shuffledWordOrder[swapIndex] = currentWordText;
-  }
-
-  return shuffledWordOrder;
+  return candidates;
 };
