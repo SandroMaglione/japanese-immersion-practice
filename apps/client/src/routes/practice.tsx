@@ -256,7 +256,9 @@ function PracticeSession({
             </label>
             <Input
               id="practice-response"
+              autoCapitalize="none"
               autoComplete="off"
+              autoCorrect="off"
               autoFocus
               className="h-14 min-w-0 flex-1 rounded-md border border-line bg-field px-4 text-center text-xl font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
               disabled={isSubmitting}
