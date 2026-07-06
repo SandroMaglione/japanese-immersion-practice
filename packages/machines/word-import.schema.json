@@ -22,7 +22,7 @@
             "allOf": [
               {
                 "minLength": 1,
-                "description": "Japanese word or expression to import. Furigana notation: add each kanji reading in square brackets immediately after that kanji, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-kanji word. For kana-only words, write the word as-is."
+                "description": "Japanese word or expression to import. Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is."
               }
             ]
           },

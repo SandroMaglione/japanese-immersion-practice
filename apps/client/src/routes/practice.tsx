@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { Actor } from "xstate";
 
-import { KanjiWordText } from "../components/kanji-word-text.tsx";
+import { WordText } from "../components/word-text.tsx";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const practiceOverviewMachine =
@@ -82,10 +82,6 @@ function PracticeSession({
   const currentResponse = useSelector(
     actor,
     (snapshot) => snapshot.context.currentResponse
-  );
-  const kanjiEntries = useSelector(
-    actor,
-    (snapshot) => snapshot.context.kanjiEntries
   );
   const lastResult = useSelector(
     actor,
@@ -191,10 +187,7 @@ function PracticeSession({
                 strokeWidth={2.5}
               />
               <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                <KanjiWordText
-                  kanjiEntries={kanjiEntries}
-                  text={lastResult.wordText}
-                />
+                <WordText text={lastResult.wordText} />
               </h1>
               <p className="w-full wrap-break-word text-lg font-black leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.wordTranslation}

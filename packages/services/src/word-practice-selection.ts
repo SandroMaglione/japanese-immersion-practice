@@ -14,15 +14,15 @@ type WordPracticeSelectionWord = {
   readonly text: string;
 };
 
-const RecentAttemptLimit = 8;
-const RecentAttemptDecay = 0.7;
+const RecentSubmissionResultLimit = 8;
+const RecentSubmissionResultDecay = 0.7;
 const MillisecondsPerMinute = 60 * 1000;
 const MillisecondsPerHour = 60 * MillisecondsPerMinute;
 const PracticeBatchSize = 10;
 const BaseSelectionWeight = 10;
 const NewWordSelectionWeight = 45;
-const UnderPracticedAttemptTarget = 3;
-const UnderPracticedAttemptWeight = 8;
+const UnderPracticedSubmissionTarget = 3;
+const UnderPracticedSubmissionWeight = 8;
 const DifficultyMissRateWeight = 70;
 const DifficultyIncorrectStreakLimit = 3;
 const DifficultyIncorrectStreakWeight = 14;
@@ -120,9 +120,9 @@ const _difficultyScore = ({
 
   const sortedSubmissions = _sortSubmissionsBySubmittedAt({ submissions });
   const latestSubmission = sortedSubmissions[sortedSubmissions.length - 1];
-  const lastAttemptWasIncorrect = latestSubmission?.result === "incorrect";
+  const latestSubmissionWasIncorrect = latestSubmission?.result === "incorrect";
   const recentSubmissions = sortedSubmissions
-    .slice(-RecentAttemptLimit)
+    .slice(-RecentSubmissionResultLimit)
     .reverse();
   let missedWeight = 0;
   let totalWeight = 0;
@@ -135,7 +135,7 @@ const _difficultyScore = ({
       missedWeight += weight;
     }
 
-    weight *= RecentAttemptDecay;
+    weight *= RecentSubmissionResultDecay;
   }
 
   const weightedRecentMissRate =
@@ -145,7 +145,7 @@ const _difficultyScore = ({
     weightedRecentMissRate * DifficultyMissRateWeight +
     Math.min(incorrectStreak({ submissions }), DifficultyIncorrectStreakLimit) *
       DifficultyIncorrectStreakWeight +
-    (lastAttemptWasIncorrect ? DifficultyLastIncorrectWeight : 0) -
+    (latestSubmissionWasIncorrect ? DifficultyLastIncorrectWeight : 0) -
     Math.min(correctStreak({ submissions }), DifficultyCorrectStreakLimit) *
       DifficultyCorrectStreakPenalty
   );
@@ -328,10 +328,10 @@ export const buildSelectionCandidates = ({
         : ((RecentBatchCooldownLimit - batchesSinceLastSeen) /
             RecentBatchCooldownLimit) *
           RecentBatchCooldownPenalty;
-    const attemptCount = wordSubmissions.length;
+    const submissionCount = wordSubmissions.length;
     const underPracticedWeight =
-      Math.max(0, UnderPracticedAttemptTarget - attemptCount) *
-      UnderPracticedAttemptWeight;
+      Math.max(0, UnderPracticedSubmissionTarget - submissionCount) *
+      UnderPracticedSubmissionWeight;
     const cooldownPenalty =
       (TimeCooldownPenalty +
         recentSubmissionCooldownPenalty +
@@ -339,7 +339,7 @@ export const buildSelectionCandidates = ({
       cooldownFactor;
     const rawSelectionWeight =
       BaseSelectionWeight +
-      (attemptCount === 0 ? NewWordSelectionWeight : 0) +
+      (submissionCount === 0 ? NewWordSelectionWeight : 0) +
       underPracticedWeight +
       _difficultyScore({ submissions: wordSubmissions }) +
       elapsedTimeWeight -

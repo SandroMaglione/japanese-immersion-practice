@@ -20,7 +20,6 @@ const CompletedPracticeBatchSummarySchema = Schema.Struct({
 });
 
 const PracticeQueueItemSchema = Schema.Struct({
-  attemptCount: Schema.Number,
   batchId: IndexedDb.Domain.WordPracticeBatchId,
   batchNumber: Schema.Number,
   batchPosition: Schema.Number,
@@ -52,14 +51,12 @@ const PracticeSubmitResultSchema = Schema.Struct({
 
 const PracticeSessionDataSchema = Schema.Struct({
   batch: Schema.optionalKey(PracticeBatchSummarySchema),
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   queue: Schema.Array(PracticeQueueItemSchema),
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
   batch: Schema.optionalKey(PracticeBatchSummarySchema),
   currentResponse: Schema.String,
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   lastResult: Schema.optionalKey(PracticeSubmissionResultSchema),
   message: Schema.optionalKey(Schema.String),
   queue: Schema.Array(PracticeQueueItemSchema),
@@ -207,12 +204,12 @@ const _buildPracticeQueue = ({
   readonly words: readonly WordEntry[];
 }) => {
   const submissionsForBatch = _batchSubmissions({ batch, submissions });
-  const attemptedWordTexts = submissionsForBatch.map(
+  const submittedWordTexts = submissionsForBatch.map(
     (submission) => submission.wordText
   );
 
   return batch.wordOrder.flatMap((wordText, batchPosition) => {
-    if (attemptedWordTexts.includes(wordText)) {
+    if (submittedWordTexts.includes(wordText)) {
       return [];
     }
 
@@ -228,7 +225,6 @@ const _buildPracticeQueue = ({
 
     return [
       {
-        attemptCount: submissionsForWord.length,
         batchId: batch.id,
         batchNumber: batch.batchNumber,
         batchPosition,
@@ -302,14 +298,12 @@ export const makePracticeOverviewMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const store = yield* IndexedDb.Store.Store;
-              const kanjiEntries = yield* store.listKanjiEntries();
               const words = yield* store.listWordEntries();
               const submissions = yield* store.listWordPracticeSubmissions();
               const batches = yield* store.listWordPracticeBatches();
 
               if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
                 return {
-                  kanjiEntries,
                   queue: [],
                 };
               }
@@ -371,7 +365,6 @@ export const makePracticeOverviewMachine = ({
                     queue: nextQueue,
                     words,
                   }),
-                  kanjiEntries,
                   queue: nextQueue,
                 };
               }
@@ -382,7 +375,6 @@ export const makePracticeOverviewMachine = ({
                   queue,
                   words,
                 }),
-                kanjiEntries,
                 queue,
               };
             })
@@ -396,14 +388,12 @@ export const makePracticeOverviewMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const store = yield* IndexedDb.Store.Store;
-              const kanjiEntries = yield* store.listKanjiEntries();
               const words = yield* store.listWordEntries();
               const submissions = yield* store.listWordPracticeSubmissions();
               const batches = yield* store.listWordPracticeBatches();
 
               if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
                 return {
-                  kanjiEntries,
                   queue: [],
                 };
               }
@@ -445,7 +435,6 @@ export const makePracticeOverviewMachine = ({
                   queue: nextQueue,
                   words,
                 }),
-                kanjiEntries,
                 queue: nextQueue,
               };
             })
@@ -607,7 +596,6 @@ export const makePracticeOverviewMachine = ({
   }).createMachine({
     context: {
       currentResponse: "",
-      kanjiEntries: [],
       queue: [],
     },
     initial: "Loading",
@@ -619,7 +607,6 @@ export const makePracticeOverviewMachine = ({
             target: "Ready",
             context: {
               batch: event.output.batch,
-              kanjiEntries: event.output.kanjiEntries,
               lastResult: undefined,
               message: undefined,
               queue: event.output.queue,
@@ -660,7 +647,6 @@ export const makePracticeOverviewMachine = ({
             context: {
               batch: event.output.batch,
               currentResponse: "",
-              kanjiEntries: event.output.kanjiEntries,
               lastResult: undefined,
               message: undefined,
               queue: event.output.queue,

@@ -235,6 +235,18 @@ export const makeWordPracticeHistoryMachine = ({
     },
     initial: "Loading",
     states: {
+      Failure: {
+        on: {
+          changeQuery: ({ event }) => ({
+            context: {
+              query: event.query,
+            },
+          }),
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
       Loading: {
         invoke: {
           src: "loadWordPracticeHistory",
@@ -272,18 +284,6 @@ export const makeWordPracticeHistoryMachine = ({
                 query: event.query,
                 summaries: context.summaries,
               }),
-              query: event.query,
-            },
-          }),
-          refresh: {
-            target: "Loading",
-          },
-        },
-      },
-      Failure: {
-        on: {
-          changeQuery: ({ event }) => ({
-            context: {
               query: event.query,
             },
           }),

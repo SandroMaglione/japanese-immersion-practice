@@ -11,7 +11,7 @@ import { Check, Pencil, Save, Trash2, Upload, X } from "lucide-react";
 
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
-import { KanjiWordText } from "./kanji-word-text.tsx";
+import { WordText } from "./word-text.tsx";
 
 const libraryMachine = LibraryMachine.makeLibraryMachine({
   runtime: RuntimeClient,
@@ -40,206 +40,12 @@ const dialogBackdropClassName = "fixed inset-0 bg-paper/70 backdrop-blur-sm";
 const dialogPopupClassName =
   "fixed left-1/2 top-1/2 grid w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-md border border-line bg-panel p-5 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none";
 
-const _isLibraryView = ({ value }: { readonly value: unknown }) =>
-  value === "batch" || value === "single";
-
 const _entryTabClassName = ({ active }: { readonly active: boolean }) =>
   `inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50 sm:px-3 ${
     active
       ? "bg-action text-action-ink hover:bg-action-hover"
       : "text-ink-muted hover:bg-field hover:text-ink"
   }`;
-
-export function KanjiLibraryContent() {
-  const [snapshot, , actor] = useMachine(libraryMachine);
-  const importingKanji = snapshot.matches("ImportingKanji");
-  const savingKanji = snapshot.matches("SavingKanji");
-  const kanjiBusy = importingKanji || savingKanji;
-
-  return (
-    <Tabs.Root
-      className="flex flex-col gap-6"
-      value={snapshot.context.kanjiView}
-      onValueChange={(value) => {
-        if (!_isLibraryView({ value })) {
-          return;
-        }
-
-        actor.trigger.selectKanjiView({ view: value });
-      }}
-    >
-      <Tabs.List
-        aria-label="Kanji entry mode"
-        className="flex min-w-0 rounded-md border border-line bg-panel p-1"
-      >
-        <Tabs.Tab
-          value="batch"
-          className={_entryTabClassName}
-          disabled={kanjiBusy}
-        >
-          <Upload size={16} strokeWidth={2.5} />
-          Batch import
-        </Tabs.Tab>
-        <Tabs.Tab
-          value="single"
-          className={_entryTabClassName}
-          disabled={kanjiBusy}
-        >
-          <Save size={16} strokeWidth={2.5} />
-          Single kanji
-        </Tabs.Tab>
-      </Tabs.List>
-      {snapshot.context.message === undefined ? null : (
-        <div className="py-3 text-sm font-black text-ink-muted" role="status">
-          {snapshot.context.message}
-        </div>
-      )}
-      <section className="divide-y divide-line">
-        <Tabs.Panel value="batch">
-          <Form
-            className="pb-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              actor.trigger.importKanji();
-            }}
-          >
-            <div className="grid gap-4">
-              <Field.Root className="grid gap-2" disabled={importingKanji}>
-                <Field.Label className="text-sm font-black">JSON</Field.Label>
-                <Field.Control
-                  render={<textarea />}
-                  className={`${textAreaControlClassName} min-h-80 font-mono text-sm leading-6 placeholder:text-ink-muted/70`}
-                  disabled={importingKanji}
-                  placeholder={LibraryMachine.KanjiImportJsonExample}
-                  value={snapshot.context.kanjiImportJsonText}
-                  onValueChange={(jsonText) => {
-                    actor.trigger.changeKanjiImportJsonText({
-                      jsonText,
-                    });
-                  }}
-                />
-              </Field.Root>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button
-                  type="button"
-                  className={quietButtonClassName}
-                  disabled={importingKanji}
-                  focusableWhenDisabled
-                  onClick={() => {
-                    actor.trigger.resetKanjiImport();
-                  }}
-                >
-                  Clear
-                </Button>
-                <Button
-                  type="submit"
-                  className={primaryButtonClassName}
-                  disabled={importingKanji}
-                  focusableWhenDisabled
-                >
-                  <Upload size={16} strokeWidth={2.5} />
-                  {importingKanji ? "Importing" : "Import"}
-                </Button>
-              </div>
-            </div>
-          </Form>
-        </Tabs.Panel>
-        <Tabs.Panel value="single">
-          <Form
-            className="pb-6"
-            onSubmit={(event) => {
-              event.preventDefault();
-              actor.trigger.saveKanji();
-            }}
-          >
-            <div className="grid gap-4">
-              <Field.Root className="grid gap-2" disabled={savingKanji}>
-                <Field.Label className="text-sm font-black">Kanji</Field.Label>
-                <Field.Control
-                  className={`${fieldControlClassName} text-lg font-black`}
-                  disabled={savingKanji}
-                  value={snapshot.context.kanjiSymbol}
-                  onValueChange={(symbol) => {
-                    actor.trigger.changeKanjiSymbol({
-                      symbol,
-                    });
-                  }}
-                />
-              </Field.Root>
-              <Field.Root className="grid gap-2" disabled={savingKanji}>
-                <Field.Label className="text-sm font-black">
-                  Readings
-                </Field.Label>
-                <Field.Control
-                  className={`${fieldControlClassName} text-sm font-bold placeholder:text-ink-muted/70`}
-                  disabled={savingKanji}
-                  placeholder="た, だ"
-                  value={snapshot.context.kanjiReadings}
-                  onValueChange={(readings) => {
-                    actor.trigger.changeKanjiReadings({
-                      readings,
-                    });
-                  }}
-                />
-              </Field.Root>
-              <Field.Root className="grid gap-2" disabled={savingKanji}>
-                <Field.Label className="text-sm font-black">Note</Field.Label>
-                <Field.Control
-                  render={<textarea />}
-                  className={`${textAreaControlClassName} min-h-28 text-sm font-semibold leading-6`}
-                  disabled={savingKanji}
-                  value={snapshot.context.kanjiDescription}
-                  onValueChange={(description) => {
-                    actor.trigger.changeKanjiDescription({
-                      description,
-                    });
-                  }}
-                />
-              </Field.Root>
-              <Button
-                type="submit"
-                className={`${primaryButtonClassName} w-full sm:w-fit`}
-                disabled={savingKanji}
-                focusableWhenDisabled
-              >
-                <Save size={16} strokeWidth={2.5} />
-                {savingKanji ? "Saving" : "Save kanji"}
-              </Button>
-            </div>
-          </Form>
-        </Tabs.Panel>
-        <div className="pt-6">
-          {!EffectArray.isReadonlyArrayNonEmpty(
-            snapshot.context.kanjiEntries
-          ) ? (
-            <div className="py-6 text-sm font-bold text-ink-muted">
-              No kanji saved yet.
-            </div>
-          ) : (
-            <div className="divide-y divide-line">
-              {snapshot.context.kanjiEntries.map((entry) => (
-                <article key={entry.symbol} className="grid gap-2 py-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="text-3xl font-black">{entry.symbol}</div>
-                    <div className="text-right text-xs font-bold text-ink-muted">
-                      {formatDateTime({ dateTime: entry.updatedAt })}
-                    </div>
-                  </div>
-                  <div className="text-sm font-black text-accent">
-                    {entry.readings.join(" / ")}
-                  </div>
-                  <p className="text-sm font-semibold leading-6 text-ink-muted">
-                    {entry.description}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-    </Tabs.Root>
-  );
-}
 
 export function WordLibraryContent() {
   const [snapshot, , actor] = useMachine(libraryMachine);
@@ -266,7 +72,7 @@ export function WordLibraryContent() {
       className="flex flex-col gap-6"
       value={snapshot.context.wordView}
       onValueChange={(value) => {
-        if (!_isLibraryView({ value })) {
+        if (value !== "batch" && value !== "single") {
           return;
         }
 
@@ -589,10 +395,7 @@ export function WordLibraryContent() {
                       ) : (
                         <div className="min-w-0">
                           <div className="text-xl font-black">
-                            <KanjiWordText
-                              kanjiEntries={snapshot.context.kanjiEntries}
-                              text={entry.text}
-                            />
+                            <WordText text={entry.text} />
                           </div>
                           <div className="text-sm font-black text-accent">
                             {entry.translation}
@@ -764,12 +567,7 @@ export function WordLibraryContent() {
                                   </div>
                                   <div className="rounded-md border border-line bg-field px-3 py-3">
                                     <div className="text-lg font-black">
-                                      <KanjiWordText
-                                        kanjiEntries={
-                                          snapshot.context.kanjiEntries
-                                        }
-                                        text={entry.text}
-                                      />
+                                      <WordText text={entry.text} />
                                     </div>
                                     <div className="text-sm font-black text-accent">
                                       {entry.translation}

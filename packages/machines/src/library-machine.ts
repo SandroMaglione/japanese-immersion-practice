@@ -13,11 +13,9 @@ import { createAsyncLogic, setup } from "xstate";
 import type { MachineRuntime } from "./runtime.ts";
 
 const LibraryDataSchema = Schema.Struct({
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
 });
 
-const KanjiLibraryViewSchema = Schema.Literals(["batch", "single"]);
 const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
 
 export const DeleteAllWordsConfirmationText = "delete all my words";
@@ -29,14 +27,7 @@ const LibraryContextSchema = Schema.Struct({
   editingWordOriginalText: Schema.optionalKey(Schema.String),
   editingWordText: Schema.String,
   editingWordTranslation: Schema.String,
-  importedKanjiCount: Schema.Number,
   importedWordCount: Schema.Number,
-  kanjiDescription: Schema.String,
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
-  kanjiImportJsonText: Schema.String,
-  kanjiReadings: Schema.String,
-  kanjiSymbol: Schema.String,
-  kanjiView: KanjiLibraryViewSchema,
   message: Schema.optionalKey(Schema.String),
   wordDescription: Schema.String,
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
@@ -44,12 +35,6 @@ const LibraryContextSchema = Schema.Struct({
   wordText: Schema.String,
   wordTranslation: Schema.String,
   wordView: WordLibraryViewSchema,
-});
-
-const SaveKanjiInputSchema = Schema.Struct({
-  description: Schema.String,
-  readings: Schema.String,
-  symbol: Schema.String,
 });
 
 const SaveWordInputSchema = Schema.Struct({
@@ -77,96 +62,15 @@ const ImportWordsInputSchema = Schema.Struct({
   jsonText: Schema.String,
 });
 
-const ImportKanjiInputSchema = Schema.Struct({
-  jsonText: Schema.String,
-});
-
-const ImportKanjiResultSchema = Schema.Struct({
-  importedCount: Schema.Number,
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
-  skippedCount: Schema.Number,
-  skippedReasons: Schema.Array(Schema.String),
-  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
-});
-
 const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
-  kanjiEntries: Schema.Array(IndexedDb.Domain.KanjiEntry),
   skippedCount: Schema.Number,
   skippedReasons: Schema.Array(Schema.String),
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
 });
 
 const FuriganaNotationDescription =
-  "Furigana notation: add each kanji reading in square brackets immediately after that kanji, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-kanji word. For kana-only words, write the word as-is.";
-
-const KanjiImportJsonKanjiSchema = Schema.Struct({
-  description: IndexedDb.Domain.NonEmptyString.annotate({
-    description:
-      "Japanese note for recall: meaning, nuance, common contexts, or a short mnemonic.",
-  }),
-  readings: Schema.Array(IndexedDb.Domain.NonEmptyString)
-    .check(Schema.isNonEmpty())
-    .annotate({
-      description:
-        'Kana readings for this kanji. Use one string per reading, for example ["し", "じ"].',
-    }),
-  symbol: IndexedDb.Domain.NonEmptyString.annotate({
-    description: "Kanji character to import.",
-  }),
-});
-
-const KanjiImportJsonSourceSchema = Schema.Struct({
-  kanji: Schema.Array(Schema.Unknown),
-});
-
-export const KanjiImportJsonSchema = Schema.Struct({
-  kanji: Schema.Array(KanjiImportJsonKanjiSchema)
-    .check(Schema.isNonEmpty())
-    .annotate({
-      description: "Kanji entries to import into the kanji library.",
-    }),
-}).annotate({
-  description:
-    "JSON payload for importing Japanese kanji entries into the kanji library.",
-  title: "Kanji import JSON",
-});
-
-export const KanjiImportJsonSchemaDocument = Schema.toJsonSchemaDocument(
-  KanjiImportJsonSchema
-);
-
-export const KanjiImportJsonSchemaDefinition =
-  KanjiImportJsonSchemaDocument.schema;
-
-export const KanjiImportJsonSchemaDefinitionText = Formatter.formatJson(
-  KanjiImportJsonSchemaDefinition,
-  {
-    space: 2,
-  }
-);
-
-export const KanjiImportJsonExample = Formatter.formatJson(
-  {
-    kanji: [
-      {
-        description:
-          "お金や物をもとにして何かを始めるときの「もと」。資金、資料、資格など、準備された価値や材料の感じがある。",
-        readings: ["し"],
-        symbol: "資",
-      },
-      {
-        description:
-          "人や物が合う、または集まる感じ。会う、会社、会話など、人と人が向き合う場面でよく出る。",
-        readings: ["あ", "かい"],
-        symbol: "会",
-      },
-    ],
-  },
-  {
-    space: 2,
-  }
-);
+  "Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is.";
 
 const WordImportJsonWordSchema = Schema.Struct({
   description: Schema.optionalKey(
@@ -237,11 +141,9 @@ export const WordImportJsonExample = Formatter.formatJson(
 
 const _loadLibraryData = Effect.gen(function* () {
   const store = yield* IndexedDb.Store.Store;
-  const kanjiEntries = yield* store.listKanjiEntries();
   const wordEntries = yield* store.listWordEntries();
 
   return {
-    kanjiEntries,
     wordEntries,
   };
 });
@@ -258,17 +160,11 @@ export const makeLibraryMachine = ({
     schemas: {
       context: Schema.toStandardSchemaV1(LibraryContextSchema),
       events: {
-        changeKanjiDescription: Schema.toStandardSchemaV1(
-          Schema.Struct({ description: Schema.String })
-        ),
-        changeKanjiImportJsonText: Schema.toStandardSchemaV1(
-          Schema.Struct({ jsonText: Schema.String })
-        ),
-        changeKanjiReadings: Schema.toStandardSchemaV1(
-          Schema.Struct({ readings: Schema.String })
-        ),
-        changeKanjiSymbol: Schema.toStandardSchemaV1(
-          Schema.Struct({ symbol: Schema.String })
+        cancelDeleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        cancelWordDeletion: Schema.toStandardSchemaV1(Schema.Void),
+        cancelWordEdit: Schema.toStandardSchemaV1(Schema.Void),
+        changeDeleteAllWordsConfirmation: Schema.toStandardSchemaV1(
+          Schema.Struct({ confirmation: Schema.String })
         ),
         changeEditingWordDescription: Schema.toStandardSchemaV1(
           Schema.Struct({ description: Schema.String })
@@ -278,9 +174,6 @@ export const makeLibraryMachine = ({
         ),
         changeEditingWordTranslation: Schema.toStandardSchemaV1(
           Schema.Struct({ translation: Schema.String })
-        ),
-        changeDeleteAllWordsConfirmation: Schema.toStandardSchemaV1(
-          Schema.Struct({ confirmation: Schema.String })
         ),
         changeWordDescription: Schema.toStandardSchemaV1(
           Schema.Struct({ description: Schema.String })
@@ -294,9 +187,6 @@ export const makeLibraryMachine = ({
         changeWordTranslation: Schema.toStandardSchemaV1(
           Schema.Struct({ translation: Schema.String })
         ),
-        cancelDeleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
-        cancelWordDeletion: Schema.toStandardSchemaV1(Schema.Void),
-        cancelWordEdit: Schema.toStandardSchemaV1(Schema.Void),
         deleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
         deleteWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
@@ -304,16 +194,10 @@ export const makeLibraryMachine = ({
         editWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
         ),
-        importKanji: Schema.toStandardSchemaV1(Schema.Void),
         importWords: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
-        resetKanjiImport: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
-        saveKanji: Schema.toStandardSchemaV1(Schema.Void),
         saveWord: Schema.toStandardSchemaV1(Schema.Void),
-        selectKanjiView: Schema.toStandardSchemaV1(
-          Schema.Struct({ view: KanjiLibraryViewSchema })
-        ),
         selectWordView: Schema.toStandardSchemaV1(
           Schema.Struct({ view: WordLibraryViewSchema })
         ),
@@ -321,243 +205,55 @@ export const makeLibraryMachine = ({
       },
     },
     actorSources: {
-      loadLibrary: createAsyncLogic({
+      deleteAllWordEntries: createAsyncLogic({
         schemas: {
-          output: Schema.toStandardSchemaV1(LibraryDataSchema),
-        },
-        run: () => runtime.runPromise(_loadLibraryData),
-      }),
-      saveKanjiEntry: createAsyncLogic({
-        schemas: {
-          input: Schema.toStandardSchemaV1(SaveKanjiInputSchema),
+          input: Schema.toStandardSchemaV1(DeleteAllWordsInputSchema),
           output: Schema.toStandardSchemaV1(LibraryDataSchema),
         },
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const symbol = input.symbol.trim();
-              const description = input.description.trim();
-              const readings = input.readings
-                .split(/[\s,、]+/)
-                .map((reading) => reading.trim())
-                .filter(Boolean);
-
               if (
-                symbol === "" ||
-                description === "" ||
-                !EffectArray.isReadonlyArrayNonEmpty(readings)
+                input.confirmation.trim() !== DeleteAllWordsConfirmationText
               ) {
                 return yield* Effect.fail(
-                  new Error("Add a kanji, at least one reading, and a note.")
+                  new Error("Type the confirmation phrase before deleting.")
                 );
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const existingKanjiEntries = yield* store.listKanjiEntries();
-
-              if (
-                existingKanjiEntries.some((entry) => entry.symbol === symbol)
-              ) {
-                return yield* Effect.fail(
-                  new Error("That kanji is already in your library.")
-                );
-              }
-
-              const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const kanjiEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.KanjiEntry
-              )({
-                createdAt: now,
-                description,
-                readings,
-                symbol,
-                updatedAt: now,
-              });
-
-              yield* store.insertKanjiEntry(kanjiEntry);
+              yield* store.deleteAllWordEntries();
 
               return yield* _loadLibraryData;
             })
           ),
       }),
-      importKanjiEntries: createAsyncLogic({
+      deleteWordEntry: createAsyncLogic({
         schemas: {
-          input: Schema.toStandardSchemaV1(ImportKanjiInputSchema),
-          output: Schema.toStandardSchemaV1(ImportKanjiResultSchema),
-        },
-        run: ({ input }) =>
-          runtime.runPromise(
-            Effect.gen(function* () {
-              if (input.jsonText.trim() === "") {
-                return yield* Effect.fail(
-                  new Error("Paste kanji JSON before importing.")
-                );
-              }
-
-              const importData = yield* Schema.decodeEffect(
-                Schema.fromJsonString(KanjiImportJsonSourceSchema)
-              )(input.jsonText.replace(/^\uFEFF/, ""));
-
-              const skippedReasons: string[] = [];
-              const parsedKanjiEntries: {
-                readonly description: string;
-                readonly readings: readonly string[];
-                readonly symbol: string;
-              }[] = [];
-
-              for (const [
-                kanjiIndex,
-                unknownKanji,
-              ] of importData.kanji.entries()) {
-                const decodedKanji = Schema.decodeUnknownOption(
-                  KanjiImportJsonKanjiSchema
-                )(unknownKanji);
-
-                if (Option.isNone(decodedKanji)) {
-                  skippedReasons.push(`#${kanjiIndex + 1}: invalid kanji JSON`);
-                  continue;
-                }
-
-                const description = decodedKanji.value.description.trim();
-                const readings = decodedKanji.value.readings
-                  .map((reading) => reading.trim())
-                  .filter(Boolean)
-                  .filter(
-                    (reading, readingIndex, allReadings) =>
-                      allReadings.indexOf(reading) === readingIndex
-                  );
-                const symbol = decodedKanji.value.symbol.trim();
-                const displayText = symbol || `#${kanjiIndex + 1}`;
-
-                if (
-                  symbol === "" ||
-                  description === "" ||
-                  !EffectArray.isReadonlyArrayNonEmpty(readings)
-                ) {
-                  skippedReasons.push(
-                    `${displayText}: missing kanji, readings, or note`
-                  );
-                  continue;
-                }
-
-                parsedKanjiEntries.push({
-                  description,
-                  readings,
-                  symbol,
-                });
-              }
-
-              const unrepeatedKanjiEntries: typeof parsedKanjiEntries = [];
-
-              for (const parsedKanjiEntry of parsedKanjiEntries) {
-                if (
-                  unrepeatedKanjiEntries.some(
-                    (kanjiEntry) =>
-                      kanjiEntry.symbol === parsedKanjiEntry.symbol
-                  )
-                ) {
-                  skippedReasons.push(
-                    `${parsedKanjiEntry.symbol}: repeated in import JSON`
-                  );
-                  continue;
-                }
-
-                unrepeatedKanjiEntries.push(parsedKanjiEntry);
-              }
-
-              const store = yield* IndexedDb.Store.Store;
-              const existingKanjiEntries = yield* store.listKanjiEntries();
-              const newKanjiEntries: typeof parsedKanjiEntries = [];
-
-              for (const parsedKanjiEntry of unrepeatedKanjiEntries) {
-                if (
-                  existingKanjiEntries.some(
-                    (entry) => entry.symbol === parsedKanjiEntry.symbol
-                  )
-                ) {
-                  skippedReasons.push(
-                    `${parsedKanjiEntry.symbol}: already in library`
-                  );
-                  continue;
-                }
-
-                newKanjiEntries.push(parsedKanjiEntry);
-              }
-
-              const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const kanjiEntries = yield* Effect.all(
-                newKanjiEntries.map((kanjiEntry) =>
-                  Schema.decodeEffect(IndexedDb.Domain.KanjiEntry)({
-                    createdAt: now,
-                    description: kanjiEntry.description,
-                    readings: kanjiEntry.readings,
-                    symbol: kanjiEntry.symbol,
-                    updatedAt: now,
-                  })
-                )
-              );
-
-              if (EffectArray.isReadonlyArrayNonEmpty(kanjiEntries)) {
-                yield* store.insertKanjiEntries(kanjiEntries);
-              }
-
-              const libraryData = yield* _loadLibraryData;
-
-              return {
-                importedCount: kanjiEntries.length,
-                kanjiEntries: libraryData.kanjiEntries,
-                skippedCount: skippedReasons.length,
-                skippedReasons: skippedReasons.slice(0, 5),
-                wordEntries: libraryData.wordEntries,
-              };
-            })
-          ),
-      }),
-      saveWordEntry: createAsyncLogic({
-        schemas: {
-          input: Schema.toStandardSchemaV1(SaveWordInputSchema),
+          input: Schema.toStandardSchemaV1(DeleteWordInputSchema),
           output: Schema.toStandardSchemaV1(LibraryDataSchema),
         },
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
               const text = input.text.trim();
-              const normalizedText = _normalizeWordText({ text });
-              const translation = input.translation.trim();
-              const description = input.description.trim();
 
-              if (normalizedText === "" || translation === "") {
+              if (text === "") {
                 return yield* Effect.fail(
-                  new Error("Add a word and translation before saving.")
+                  new Error("Choose a word before deleting.")
                 );
               }
 
               const store = yield* IndexedDb.Store.Store;
               const existingWordEntries = yield* store.listWordEntries();
 
-              if (
-                existingWordEntries.some(
-                  (entry) =>
-                    _normalizeWordText({ text: entry.text }) === normalizedText
-                )
-              ) {
+              if (!existingWordEntries.some((entry) => entry.text === text)) {
                 return yield* Effect.fail(
-                  new Error("That word is already in your library.")
+                  new Error("Could not find that word in your library.")
                 );
               }
 
-              const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const wordEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordEntry
-              )({
-                createdAt: now,
-                ...(description === "" ? {} : { description }),
-                text,
-                translation,
-                updatedAt: now,
-              });
-
-              yield* store.insertWordEntry(wordEntry);
+              yield* store.deleteWordEntry(text);
 
               return yield* _loadLibraryData;
             })
@@ -692,11 +388,66 @@ export const makeLibraryMachine = ({
 
               return {
                 importedCount: wordEntries.length,
-                kanjiEntries: libraryData.kanjiEntries,
                 skippedCount: skippedReasons.length,
                 skippedReasons: skippedReasons.slice(0, 5),
                 wordEntries: libraryData.wordEntries,
               };
+            })
+          ),
+      }),
+      loadLibrary: createAsyncLogic({
+        schemas: {
+          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+        },
+        run: () => runtime.runPromise(_loadLibraryData),
+      }),
+      saveWordEntry: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(SaveWordInputSchema),
+          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              const text = input.text.trim();
+              const normalizedText = _normalizeWordText({ text });
+              const translation = input.translation.trim();
+              const description = input.description.trim();
+
+              if (normalizedText === "" || translation === "") {
+                return yield* Effect.fail(
+                  new Error("Add a word and translation before saving.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWordEntries();
+
+              if (
+                existingWordEntries.some(
+                  (entry) =>
+                    _normalizeWordText({ text: entry.text }) === normalizedText
+                )
+              ) {
+                return yield* Effect.fail(
+                  new Error("That word is already in your library.")
+                );
+              }
+
+              const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const wordEntry = yield* Schema.decodeEffect(
+                IndexedDb.Domain.WordEntry
+              )({
+                createdAt: now,
+                ...(description === "" ? {} : { description }),
+                text,
+                translation,
+                updatedAt: now,
+              });
+
+              yield* store.insertWordEntry(wordEntry);
+
+              return yield* _loadLibraryData;
             })
           ),
       }),
@@ -771,60 +522,6 @@ export const makeLibraryMachine = ({
             })
           ),
       }),
-      deleteWordEntry: createAsyncLogic({
-        schemas: {
-          input: Schema.toStandardSchemaV1(DeleteWordInputSchema),
-          output: Schema.toStandardSchemaV1(LibraryDataSchema),
-        },
-        run: ({ input }) =>
-          runtime.runPromise(
-            Effect.gen(function* () {
-              const text = input.text.trim();
-
-              if (text === "") {
-                return yield* Effect.fail(
-                  new Error("Choose a word before deleting.")
-                );
-              }
-
-              const store = yield* IndexedDb.Store.Store;
-              const existingWordEntries = yield* store.listWordEntries();
-
-              if (!existingWordEntries.some((entry) => entry.text === text)) {
-                return yield* Effect.fail(
-                  new Error("Could not find that word in your library.")
-                );
-              }
-
-              yield* store.deleteWordEntry(text);
-
-              return yield* _loadLibraryData;
-            })
-          ),
-      }),
-      deleteAllWordEntries: createAsyncLogic({
-        schemas: {
-          input: Schema.toStandardSchemaV1(DeleteAllWordsInputSchema),
-          output: Schema.toStandardSchemaV1(LibraryDataSchema),
-        },
-        run: ({ input }) =>
-          runtime.runPromise(
-            Effect.gen(function* () {
-              if (
-                input.confirmation.trim() !== DeleteAllWordsConfirmationText
-              ) {
-                return yield* Effect.fail(
-                  new Error("Type the confirmation phrase before deleting.")
-                );
-              }
-
-              const store = yield* IndexedDb.Store.Store;
-              yield* store.deleteAllWordEntries();
-
-              return yield* _loadLibraryData;
-            })
-          ),
-      }),
     },
   }).createMachine({
     context: {
@@ -832,14 +529,7 @@ export const makeLibraryMachine = ({
       editingWordDescription: "",
       editingWordText: "",
       editingWordTranslation: "",
-      importedKanjiCount: 0,
       importedWordCount: 0,
-      kanjiDescription: "",
-      kanjiEntries: [],
-      kanjiImportJsonText: "",
-      kanjiReadings: "",
-      kanjiSymbol: "",
-      kanjiView: "batch",
       wordDescription: "",
       wordEntries: [],
       wordImportJsonText: "",
@@ -849,13 +539,167 @@ export const makeLibraryMachine = ({
     },
     initial: "Loading",
     states: {
+      ConfirmingAllWordsDeletion: {
+        on: {
+          cancelDeleteAllWords: {
+            target: "Ready",
+            context: {
+              deleteAllWordsConfirmation: "",
+              message: undefined,
+            },
+          },
+          changeDeleteAllWordsConfirmation: ({ event }) => ({
+            context: {
+              deleteAllWordsConfirmation: event.confirmation,
+              message: undefined,
+            },
+          }),
+          deleteAllWords: {
+            target: "DeletingAllWords",
+          },
+          deleteWord: ({ event }) => ({
+            target: "ConfirmingWordDeletion",
+            context: {
+              deleteAllWordsConfirmation: "",
+              deletingWordText: event.text,
+              message: undefined,
+            },
+          }),
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
+      ConfirmingWordDeletion: {
+        on: {
+          cancelWordDeletion: {
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
+          deleteAllWords: {
+            target: "ConfirmingAllWordsDeletion",
+            context: {
+              deleteAllWordsConfirmation: "",
+              deletingWordText: undefined,
+              message: undefined,
+            },
+          },
+          deleteWord: ({ context, event }) =>
+            context.deletingWordText === event.text
+              ? {
+                  target: "DeletingWord",
+                }
+              : {
+                  reenter: true,
+                  target: "ConfirmingWordDeletion",
+                  context: {
+                    deletingWordText: event.text,
+                    message: undefined,
+                  },
+                },
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
+      DeletingAllWords: {
+        invoke: {
+          src: "deleteAllWordEntries",
+          input: ({ context }) => ({
+            confirmation: context.deleteAllWordsConfirmation,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deleteAllWordsConfirmation: "",
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              message: "All words deleted.",
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "ConfirmingAllWordsDeletion",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not delete all words.",
+            },
+          }),
+        },
+      },
+      DeletingWord: {
+        invoke: {
+          src: "deleteWordEntry",
+          input: ({ context }) => ({
+            text: context.deletingWordText ?? "",
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message: "Word deleted.",
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              deletingWordText: undefined,
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not delete the word.",
+            },
+          }),
+        },
+      },
+      ImportingWords: {
+        invoke: {
+          src: "importWordEntries",
+          input: ({ context }) => ({
+            jsonText: context.wordImportJsonText,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              importedWordCount: event.output.importedCount,
+              message:
+                event.output.skippedCount === 0
+                  ? `${event.output.importedCount} words imported.`
+                  : `${event.output.importedCount} words imported. ${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
+                      event.output.skippedCount >
+                      event.output.skippedReasons.length
+                        ? "; more skipped"
+                        : ""
+                    }).`,
+              wordEntries: event.output.wordEntries,
+              wordImportJsonText: "",
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not import the words.",
+            },
+          }),
+        },
+      },
       Loading: {
         invoke: {
           src: "loadLibrary",
           onDone: ({ event }) => ({
             target: "Ready",
             context: {
-              kanjiEntries: event.output.kanjiEntries,
               message: undefined,
               wordEntries: event.output.wordEntries,
             },
@@ -894,15 +738,15 @@ export const makeLibraryMachine = ({
               message: undefined,
             },
           },
-          changeEditingWordDescription: ({ event }) => ({
-            context: {
-              editingWordDescription: event.description,
-              message: undefined,
-            },
-          }),
           changeDeleteAllWordsConfirmation: ({ event }) => ({
             context: {
               deleteAllWordsConfirmation: event.confirmation,
+              message: undefined,
+            },
+          }),
+          changeEditingWordDescription: ({ event }) => ({
+            context: {
+              editingWordDescription: event.description,
               message: undefined,
             },
           }),
@@ -915,30 +759,6 @@ export const makeLibraryMachine = ({
           changeEditingWordTranslation: ({ event }) => ({
             context: {
               editingWordTranslation: event.translation,
-              message: undefined,
-            },
-          }),
-          changeKanjiDescription: ({ event }) => ({
-            context: {
-              kanjiDescription: event.description,
-              message: undefined,
-            },
-          }),
-          changeKanjiImportJsonText: ({ event }) => ({
-            context: {
-              kanjiImportJsonText: event.jsonText,
-              message: undefined,
-            },
-          }),
-          changeKanjiReadings: ({ event }) => ({
-            context: {
-              kanjiReadings: event.readings,
-              message: undefined,
-            },
-          }),
-          changeKanjiSymbol: ({ event }) => ({
-            context: {
-              kanjiSymbol: event.symbol,
               message: undefined,
             },
           }),
@@ -1012,21 +832,11 @@ export const makeLibraryMachine = ({
               },
             };
           },
-          importKanji: {
-            target: "ImportingKanji",
-          },
           importWords: {
             target: "ImportingWords",
           },
           refresh: {
             target: "Loading",
-          },
-          resetKanjiImport: {
-            context: {
-              importedKanjiCount: 0,
-              kanjiImportJsonText: "",
-              message: undefined,
-            },
           },
           resetWordImport: {
             context: {
@@ -1035,18 +845,9 @@ export const makeLibraryMachine = ({
               wordImportJsonText: "",
             },
           },
-          saveKanji: {
-            target: "SavingKanji",
-          },
           saveWord: {
             target: "SavingWord",
           },
-          selectKanjiView: ({ event }) => ({
-            context: {
-              kanjiView: event.view,
-              message: undefined,
-            },
-          }),
           selectWordView: ({ event }) => ({
             context: {
               message: undefined,
@@ -1056,194 +857,6 @@ export const makeLibraryMachine = ({
           updateWord: {
             target: "UpdatingWord",
           },
-        },
-      },
-      ConfirmingWordDeletion: {
-        on: {
-          cancelWordDeletion: {
-            target: "Ready",
-            context: {
-              deletingWordText: undefined,
-              message: undefined,
-            },
-          },
-          deleteAllWords: {
-            target: "ConfirmingAllWordsDeletion",
-            context: {
-              deleteAllWordsConfirmation: "",
-              deletingWordText: undefined,
-              message: undefined,
-            },
-          },
-          deleteWord: ({ context, event }) =>
-            context.deletingWordText === event.text
-              ? {
-                  target: "DeletingWord",
-                }
-              : {
-                  reenter: true,
-                  target: "ConfirmingWordDeletion",
-                  context: {
-                    deletingWordText: event.text,
-                    message: undefined,
-                  },
-                },
-          refresh: {
-            target: "Loading",
-          },
-        },
-      },
-      ConfirmingAllWordsDeletion: {
-        on: {
-          cancelDeleteAllWords: {
-            target: "Ready",
-            context: {
-              deleteAllWordsConfirmation: "",
-              message: undefined,
-            },
-          },
-          changeDeleteAllWordsConfirmation: ({ event }) => ({
-            context: {
-              deleteAllWordsConfirmation: event.confirmation,
-              message: undefined,
-            },
-          }),
-          deleteAllWords: {
-            target: "DeletingAllWords",
-          },
-          deleteWord: ({ event }) => ({
-            target: "ConfirmingWordDeletion",
-            context: {
-              deleteAllWordsConfirmation: "",
-              deletingWordText: event.text,
-              message: undefined,
-            },
-          }),
-          refresh: {
-            target: "Loading",
-          },
-        },
-      },
-      DeletingWord: {
-        invoke: {
-          src: "deleteWordEntry",
-          input: ({ context }) => ({
-            text: context.deletingWordText ?? "",
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              deletingWordText: undefined,
-              kanjiEntries: event.output.kanjiEntries,
-              message: "Word deleted.",
-              wordEntries: event.output.wordEntries,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              deletingWordText: undefined,
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not delete the word.",
-            },
-          }),
-        },
-      },
-      DeletingAllWords: {
-        invoke: {
-          src: "deleteAllWordEntries",
-          input: ({ context }) => ({
-            confirmation: context.deleteAllWordsConfirmation,
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              deleteAllWordsConfirmation: "",
-              editingWordDescription: "",
-              editingWordOriginalText: undefined,
-              editingWordText: "",
-              editingWordTranslation: "",
-              kanjiEntries: event.output.kanjiEntries,
-              message: "All words deleted.",
-              wordEntries: event.output.wordEntries,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "ConfirmingAllWordsDeletion",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not delete all words.",
-            },
-          }),
-        },
-      },
-      SavingKanji: {
-        invoke: {
-          src: "saveKanjiEntry",
-          input: ({ context }) => ({
-            description: context.kanjiDescription,
-            readings: context.kanjiReadings,
-            symbol: context.kanjiSymbol,
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              kanjiDescription: "",
-              kanjiEntries: event.output.kanjiEntries,
-              kanjiReadings: "",
-              kanjiSymbol: "",
-              message: "Kanji saved.",
-              wordEntries: event.output.wordEntries,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not save the kanji.",
-            },
-          }),
-        },
-      },
-      ImportingKanji: {
-        invoke: {
-          src: "importKanjiEntries",
-          input: ({ context }) => ({
-            jsonText: context.kanjiImportJsonText,
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              importedKanjiCount: event.output.importedCount,
-              kanjiEntries: event.output.kanjiEntries,
-              kanjiImportJsonText: "",
-              message:
-                event.output.skippedCount === 0
-                  ? `${event.output.importedCount} kanji imported.`
-                  : `${event.output.importedCount} kanji imported. ${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
-                      event.output.skippedCount >
-                      event.output.skippedReasons.length
-                        ? "; more skipped"
-                        : ""
-                    }).`,
-              wordEntries: event.output.wordEntries,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not import the kanji.",
-            },
-          }),
         },
       },
       SavingWord: {
@@ -1257,7 +870,6 @@ export const makeLibraryMachine = ({
           onDone: ({ event }) => ({
             target: "Ready",
             context: {
-              kanjiEntries: event.output.kanjiEntries,
               message: "Word saved.",
               wordDescription: "",
               wordEntries: event.output.wordEntries,
@@ -1272,41 +884,6 @@ export const makeLibraryMachine = ({
                 event.error instanceof Error
                   ? event.error.message
                   : "Could not save the word.",
-            },
-          }),
-        },
-      },
-      ImportingWords: {
-        invoke: {
-          src: "importWordEntries",
-          input: ({ context }) => ({
-            jsonText: context.wordImportJsonText,
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              importedWordCount: event.output.importedCount,
-              kanjiEntries: event.output.kanjiEntries,
-              message:
-                event.output.skippedCount === 0
-                  ? `${event.output.importedCount} words imported.`
-                  : `${event.output.importedCount} words imported. ${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
-                      event.output.skippedCount >
-                      event.output.skippedReasons.length
-                        ? "; more skipped"
-                        : ""
-                    }).`,
-              wordEntries: event.output.wordEntries,
-              wordImportJsonText: "",
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not import the words.",
             },
           }),
         },
@@ -1327,7 +904,6 @@ export const makeLibraryMachine = ({
               editingWordOriginalText: undefined,
               editingWordText: "",
               editingWordTranslation: "",
-              kanjiEntries: event.output.kanjiEntries,
               message: "Word updated.",
               wordEntries: event.output.wordEntries,
             },

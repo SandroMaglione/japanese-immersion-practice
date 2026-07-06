@@ -9,18 +9,10 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as WordHistoryRouteImport } from './routes/word-history'
 import { Route as WordRouteImport } from './routes/word'
 import { Route as PracticeRouteImport } from './routes/practice'
-import { Route as KanjiRouteImport } from './routes/kanji'
-import { Route as ImportRouteImport } from './routes/import'
 import { Route as IndexRouteImport } from './routes/index'
 
-const WordHistoryRoute = WordHistoryRouteImport.update({
-  id: '/word-history',
-  path: '/word-history',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const WordRoute = WordRouteImport.update({
   id: '/word',
   path: '/word',
@@ -31,16 +23,6 @@ const PracticeRoute = PracticeRouteImport.update({
   path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
-const KanjiRoute = KanjiRouteImport.update({
-  id: '/kanji',
-  path: '/kanji',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ImportRoute = ImportRouteImport.update({
-  id: '/import',
-  path: '/import',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,63 +31,36 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/import': typeof ImportRoute
-  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
-  '/word-history': typeof WordHistoryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/import': typeof ImportRoute
-  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
-  '/word-history': typeof WordHistoryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/import': typeof ImportRoute
-  '/kanji': typeof KanjiRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
-  '/word-history': typeof WordHistoryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    '/' | '/import' | '/kanji' | '/practice' | '/word' | '/word-history'
+  fullPaths: '/' | '/practice' | '/word'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/import' | '/kanji' | '/practice' | '/word' | '/word-history'
-  id:
-    | '__root__'
-    | '/'
-    | '/import'
-    | '/kanji'
-    | '/practice'
-    | '/word'
-    | '/word-history'
+  to: '/' | '/practice' | '/word'
+  id: '__root__' | '/' | '/practice' | '/word'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  ImportRoute: typeof ImportRoute
-  KanjiRoute: typeof KanjiRoute
   PracticeRoute: typeof PracticeRoute
   WordRoute: typeof WordRoute
-  WordHistoryRoute: typeof WordHistoryRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/word-history': {
-      id: '/word-history'
-      path: '/word-history'
-      fullPath: '/word-history'
-      preLoaderRoute: typeof WordHistoryRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/word': {
       id: '/word'
       path: '/word'
@@ -120,20 +75,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/kanji': {
-      id: '/kanji'
-      path: '/kanji'
-      fullPath: '/kanji'
-      preLoaderRoute: typeof KanjiRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/import': {
-      id: '/import'
-      path: '/import'
-      fullPath: '/import'
-      preLoaderRoute: typeof ImportRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -146,11 +87,8 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  ImportRoute: ImportRoute,
-  KanjiRoute: KanjiRoute,
   PracticeRoute: PracticeRoute,
   WordRoute: WordRoute,
-  WordHistoryRoute: WordHistoryRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
