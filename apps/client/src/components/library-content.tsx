@@ -7,7 +7,7 @@ import { Tooltip } from "@base-ui/react/tooltip";
 import { LibraryMachine } from "@jip/machines";
 import { useMachine } from "@xstate/react";
 import { Array as EffectArray } from "effect";
-import { Check, Pencil, Save, Trash2, Upload, X } from "lucide-react";
+import { Check, Copy, Pencil, Save, Trash2, Upload, X } from "lucide-react";
 
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
@@ -28,6 +28,9 @@ const quietButtonClassName =
 
 const primaryButtonClassName =
   "inline-flex h-10 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
+
+const secondaryButtonClassName =
+  "inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
 
 const iconButtonClassName =
   "inline-flex size-9 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50";
@@ -55,6 +58,7 @@ export function WordLibraryContent() {
   const confirmingWordDeletion = snapshot.matches("ConfirmingWordDeletion");
   const deletingAllWords = snapshot.matches("DeletingAllWords");
   const deletingWord = snapshot.matches("DeletingWord");
+  const exportingWords = snapshot.matches("ExportingWords");
   const importingWords = snapshot.matches("ImportingWords");
   const savingWord = snapshot.matches("SavingWord");
   const updatingWord = snapshot.matches("UpdatingWord");
@@ -66,6 +70,7 @@ export function WordLibraryContent() {
     confirmingWordDeletion ||
     deletingAllWords ||
     deletingWord;
+  const wordExportCopied = snapshot.matches({ Ready: "Copied" });
 
   return (
     <Tabs.Root
@@ -238,11 +243,12 @@ export function WordLibraryContent() {
                 }}
               >
                 <AlertDialog.Trigger
-                  className="inline-flex h-10 min-w-0 items-center justify-center gap-2 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
+                  className={secondaryButtonClassName}
                   disabled={
                     confirmingWordDeletion ||
                     deletingAllWords ||
                     deletingWord ||
+                    exportingWords ||
                     importingWords ||
                     savingWord ||
                     updatingWord
@@ -307,6 +313,34 @@ export function WordLibraryContent() {
                   </AlertDialog.Popup>
                 </AlertDialog.Portal>
               </AlertDialog.Root>
+              <Button
+                type="button"
+                className={secondaryButtonClassName}
+                disabled={
+                  confirmingWordDeletion ||
+                  deletingAllWords ||
+                  deletingWord ||
+                  exportingWords ||
+                  importingWords ||
+                  savingWord ||
+                  updatingWord
+                }
+                focusableWhenDisabled
+                onClick={() => {
+                  actor.trigger.exportWords();
+                }}
+              >
+                {wordExportCopied ? (
+                  <Check size={16} strokeWidth={2.5} />
+                ) : (
+                  <Copy size={16} strokeWidth={2.5} />
+                )}
+                {exportingWords
+                  ? "Exporting"
+                  : wordExportCopied
+                    ? "Copied"
+                    : "Export words"}
+              </Button>
             </div>
           ) : null}
           {!hasWordEntries ? (

@@ -69,6 +69,14 @@ const ImportWordsResultSchema = Schema.Struct({
   wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
 });
 
+const ExportWordsInputSchema = Schema.Struct({
+  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+});
+
+const ExportWordsResultSchema = Schema.Struct({
+  copiedCount: Schema.Number,
+});
+
 const FuriganaNotationDescription =
   "Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is.";
 
@@ -194,6 +202,7 @@ export const makeLibraryMachine = ({
         editWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
         ),
+        exportWords: Schema.toStandardSchemaV1(Schema.Void),
         importWords: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
@@ -256,6 +265,41 @@ export const makeLibraryMachine = ({
               yield* store.deleteWordEntry(text);
 
               return yield* _loadLibraryData;
+            })
+          ),
+      }),
+      exportWordEntries: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(ExportWordsInputSchema),
+          output: Schema.toStandardSchemaV1(ExportWordsResultSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (!EffectArray.isReadonlyArrayNonEmpty(input.wordEntries)) {
+                return yield* Effect.fail(new Error("No words to export."));
+              }
+
+              const clipboard = globalThis.navigator?.clipboard;
+
+              if (clipboard === undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not access the clipboard.")
+                );
+              }
+
+              const exportText = input.wordEntries
+                .map((entry) => FuriganaText.toPlainText({ text: entry.text }))
+                .join("\n");
+
+              yield* Effect.tryPromise({
+                catch: () => new Error("Could not copy the words."),
+                try: () => clipboard.writeText(exportText),
+              });
+
+              return {
+                copiedCount: input.wordEntries.length,
+              };
             })
           ),
       }),
@@ -660,6 +704,31 @@ export const makeLibraryMachine = ({
           }),
         },
       },
+      ExportingWords: {
+        invoke: {
+          src: "exportWordEntries",
+          input: ({ context }) => ({
+            wordEntries: context.wordEntries,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready.Copied",
+            context: {
+              message: `${event.output.copiedCount} ${
+                event.output.copiedCount === 1 ? "word" : "words"
+              } copied to clipboard.`,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready.Idle",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not copy the words.",
+            },
+          }),
+        },
+      },
       ImportingWords: {
         invoke: {
           src: "importWordEntries",
@@ -716,6 +785,17 @@ export const makeLibraryMachine = ({
         },
       },
       Ready: {
+        initial: "Idle",
+        states: {
+          Copied: {
+            after: {
+              1800: {
+                target: "Idle",
+              },
+            },
+          },
+          Idle: {},
+        },
         on: {
           cancelDeleteAllWords: {
             context: {
@@ -831,6 +911,12 @@ export const makeLibraryMachine = ({
                 message: undefined,
               },
             };
+          },
+          exportWords: {
+            target: "ExportingWords",
+            context: {
+              message: undefined,
+            },
           },
           importWords: {
             target: "ImportingWords",

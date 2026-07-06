@@ -51,11 +51,13 @@ const PracticeSubmitResultSchema = Schema.Struct({
 
 const PracticeSessionDataSchema = Schema.Struct({
   batch: Schema.optionalKey(PracticeBatchSummarySchema),
+  completedBatch: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
   queue: Schema.Array(PracticeQueueItemSchema),
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
   batch: Schema.optionalKey(PracticeBatchSummarySchema),
+  completedBatch: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
   currentResponse: Schema.String,
   lastResult: Schema.optionalKey(PracticeSubmissionResultSchema),
   message: Schema.optionalKey(Schema.String),
@@ -273,6 +275,37 @@ const _buildBatchSummary = ({
   };
 };
 
+const _buildCompletedBatchSummary = ({
+  batch,
+  submissions,
+  words,
+}: {
+  readonly batch: WordPracticeBatch;
+  readonly submissions: readonly WordPracticeSubmission[];
+  readonly words: readonly WordEntry[];
+}) => {
+  const completedBatchSubmissions = _batchSubmissions({
+    batch,
+    submissions,
+  });
+  const correctCount = completedBatchSubmissions.filter(
+    (completedBatchSubmission) =>
+      _submissionResult({
+        submission: completedBatchSubmission,
+      }) === "correct"
+  ).length;
+
+  return {
+    batchNumber: batch.batchNumber,
+    correctCount,
+    incorrectCount: completedBatchSubmissions.length - correctCount,
+    totalCount: _batchTotalCount({
+      batch,
+      words,
+    }),
+  };
+};
+
 export const makePracticeOverviewMachine = ({
   runtime,
 }: {
@@ -286,6 +319,7 @@ export const makePracticeOverviewMachine = ({
           Schema.Struct({ response: Schema.String })
         ),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        startNextBatch: Schema.toStandardSchemaV1(Schema.Void),
         submit: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
@@ -310,6 +344,29 @@ export const makePracticeOverviewMachine = ({
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const existingActiveBatch = _activePracticeBatch({ batches });
+
+              if (existingActiveBatch === undefined) {
+                const latestCompletedBatch = batches.find(
+                  (batch) => batch.completedAt !== undefined
+                );
+
+                if (latestCompletedBatch !== undefined) {
+                  return {
+                    batch: _buildBatchSummary({
+                      batch: latestCompletedBatch,
+                      queue: [],
+                      words,
+                    }),
+                    completedBatch: _buildCompletedBatchSummary({
+                      batch: latestCompletedBatch,
+                      submissions,
+                      words,
+                    }),
+                    queue: [],
+                  };
+                }
+              }
+
               const batch =
                 existingActiveBatch === undefined
                   ? yield* _makePracticeBatch({
@@ -339,33 +396,21 @@ export const makePracticeOverviewMachine = ({
                   batch,
                   completedAt: now,
                 });
-                const nextBatch = yield* _makePracticeBatch({
-                  batchNumber: _nextBatchNumber({ batches }),
-                  startedAt: now,
-                  wordOrder: _buildWordPracticeWordOrder({
-                    batches,
-                    now,
-                    submissions,
-                    words,
-                  }),
-                });
 
                 yield* store.upsertWordPracticeBatch(completedBatch);
-                yield* store.insertWordPracticeBatch(nextBatch);
-
-                const nextQueue = _buildPracticeQueue({
-                  batch: nextBatch,
-                  submissions,
-                  words,
-                });
 
                 return {
                   batch: _buildBatchSummary({
-                    batch: nextBatch,
-                    queue: nextQueue,
+                    batch: completedBatch,
+                    queue: [],
                     words,
                   }),
-                  queue: nextQueue,
+                  completedBatch: _buildCompletedBatchSummary({
+                    batch: completedBatch,
+                    submissions,
+                    words,
+                  }),
+                  queue: [],
                 };
               }
 
@@ -509,58 +554,27 @@ export const makePracticeOverviewMachine = ({
                   batch,
                   completedAt: submittedAt,
                 });
-                const nextBatch = yield* _makePracticeBatch({
-                  batchNumber: _nextBatchNumber({ batches }),
-                  startedAt: submittedAt,
-                  wordOrder: _buildWordPracticeWordOrder({
-                    batches,
-                    now: submittedAt,
-                    submissions,
-                    words,
-                  }),
-                });
-                const nextQueue = _buildPracticeQueue({
-                  batch: nextBatch,
+                const completedBatchSummary = _buildCompletedBatchSummary({
+                  batch: completedBatch,
                   submissions,
                   words,
                 });
-                const completedBatchSubmissions = _batchSubmissions({
-                  batch: completedBatch,
-                  submissions,
-                });
-                const completedBatchCorrectCount =
-                  completedBatchSubmissions.filter(
-                    (completedBatchSubmission) =>
-                      _submissionResult({
-                        submission: completedBatchSubmission,
-                      }) === "correct"
-                  ).length;
 
                 yield* store.saveWordPracticeSubmissionAndBatches({
-                  batches: [completedBatch, nextBatch],
+                  batches: [completedBatch],
                   submission,
                 });
 
                 return {
                   batch: _buildBatchSummary({
-                    batch: nextBatch,
-                    queue: nextQueue,
+                    batch: completedBatch,
+                    queue: [],
                     words,
                   }),
-                  batchCompleted: {
-                    batchNumber: completedBatch.batchNumber,
-                    correctCount: completedBatchCorrectCount,
-                    incorrectCount:
-                      completedBatchSubmissions.length -
-                      completedBatchCorrectCount,
-                    totalCount: _batchTotalCount({
-                      batch: completedBatch,
-                      words,
-                    }),
-                  },
+                  batchCompleted: completedBatchSummary,
                   batchNumber: batch.batchNumber,
                   isCorrect,
-                  queue: nextQueue,
+                  queue: [],
                   ...(word.description === undefined
                     ? {}
                     : { wordDescription: word.description }),
@@ -604,9 +618,13 @@ export const makePracticeOverviewMachine = ({
         invoke: {
           src: "loadPracticeOverview",
           onDone: ({ event }) => ({
-            target: "Ready",
+            target:
+              event.output.completedBatch === undefined
+                ? "Ready"
+                : "BatchFinished",
             context: {
               batch: event.output.batch,
+              completedBatch: event.output.completedBatch,
               lastResult: undefined,
               message: undefined,
               queue: event.output.queue,
@@ -646,6 +664,7 @@ export const makePracticeOverviewMachine = ({
             target: "Ready",
             context: {
               batch: event.output.batch,
+              completedBatch: undefined,
               currentResponse: "",
               lastResult: undefined,
               message: undefined,
@@ -676,6 +695,7 @@ export const makePracticeOverviewMachine = ({
             target: "Revealed",
             context: {
               batch: event.output.batch,
+              completedBatch: event.output.batchCompleted,
               currentResponse: "",
               lastResult: {
                 batchCompleted: event.output.batchCompleted,
@@ -702,16 +722,62 @@ export const makePracticeOverviewMachine = ({
       },
       Revealed: {
         on: {
+          startNextBatch: {
+            target: "StartingBatch",
+          },
           refresh: {
             target: "RefreshingBatch",
           },
-          submit: {
+          submit: ({ context }) =>
+            context.completedBatch === undefined
+              ? {
+                  target: "Ready",
+                  context: {
+                    lastResult: undefined,
+                    message: undefined,
+                  },
+                }
+              : {
+                  target: "BatchFinished",
+                  context: {
+                    message: undefined,
+                  },
+                },
+        },
+      },
+      BatchFinished: {
+        on: {
+          refresh: {
+            target: "StartingBatch",
+          },
+          startNextBatch: {
+            target: "StartingBatch",
+          },
+        },
+      },
+      StartingBatch: {
+        invoke: {
+          src: "refreshPracticeBatch",
+          onDone: ({ event }) => ({
             target: "Ready",
             context: {
+              batch: event.output.batch,
+              completedBatch: undefined,
+              currentResponse: "",
               lastResult: undefined,
               message: undefined,
+              queue: event.output.queue,
             },
-          },
+          }),
+          onError: ({ event }) => ({
+            target: "BatchFinished",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not start the next practice batch.",
+            },
+          }),
         },
       },
       Failure: {

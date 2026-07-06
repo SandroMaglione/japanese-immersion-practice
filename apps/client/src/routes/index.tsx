@@ -104,29 +104,52 @@ function WordHistorySearch({
   readonly actor: WordPracticeHistoryActor;
 }) {
   const query = useSelector(actor, (snapshot) => snapshot.context.query);
+  const wordCount = useSelector(
+    actor,
+    (snapshot) => snapshot.context.summaries.length
+  );
+  const matchingWordCount = useSelector(
+    actor,
+    (snapshot) => snapshot.context.matchingSummaries.length
+  );
+  const todayAttemptCount = useSelector(
+    actor,
+    (snapshot) => snapshot.context.todayAttemptCount
+  );
+  const wordCountLabel =
+    query.trim() === ""
+      ? _formatWordCount({ count: wordCount })
+      : `${_formatWordCount({ count: matchingWordCount })} of ${_formatWordCount({ count: wordCount })}`;
+  const attemptCountLabel = `${todayAttemptCount} ${
+    todayAttemptCount === 1 ? "attempt" : "attempts"
+  }`;
+  const summaryLabel = `${wordCountLabel} ・ ${attemptCountLabel} today`;
 
   return (
-    <label className="relative w-full max-w-xl">
-      <Search
-        aria-hidden="true"
-        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted"
-        size={18}
-        strokeWidth={2.5}
-      />
-      <Input
-        aria-label="Search word attempts"
-        autoComplete="off"
-        className="h-12 w-full rounded-md border border-line bg-field pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
-        placeholder="Search words"
-        type="search"
-        value={query}
-        onValueChange={(nextQuery) => {
-          actor.trigger.changeQuery({
-            query: nextQuery,
-          });
-        }}
-      />
-    </label>
+    <div className="grid w-full max-w-xl gap-2">
+      <label className="relative">
+        <Search
+          aria-hidden="true"
+          className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-ink-muted"
+          size={18}
+          strokeWidth={2.5}
+        />
+        <Input
+          aria-label="Search word attempts"
+          autoComplete="off"
+          className="h-12 w-full rounded-md border border-line bg-field pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
+          placeholder="Search words"
+          type="search"
+          value={query}
+          onValueChange={(nextQuery) => {
+            actor.trigger.changeQuery({
+              query: nextQuery,
+            });
+          }}
+        />
+      </label>
+      <p className="px-1 text-sm font-black text-ink-muted">{summaryLabel}</p>
+    </div>
   );
 }
 
@@ -464,4 +487,8 @@ function WordHistoryStat({
       </dd>
     </div>
   );
+}
+
+function _formatWordCount({ count }: { readonly count: number }) {
+  return `${count} ${count === 1 ? "word" : "words"}`;
 }

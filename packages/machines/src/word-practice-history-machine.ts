@@ -29,6 +29,12 @@ const WordPracticeHistoryContextSchema = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   query: Schema.String,
   summaries: Schema.Array(WordPracticeHistorySummarySchema),
+  todayAttemptCount: Schema.Number,
+});
+
+const WordPracticeHistoryDataSchema = Schema.Struct({
+  summaries: Schema.Array(WordPracticeHistorySummarySchema),
+  todayAttemptCount: Schema.Number,
 });
 
 const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
@@ -100,9 +106,7 @@ export const makeWordPracticeHistoryMachine = ({
     actorSources: {
       loadWordPracticeHistory: createAsyncLogic({
         schemas: {
-          output: Schema.toStandardSchemaV1(
-            Schema.Array(WordPracticeHistorySummarySchema)
-          ),
+          output: Schema.toStandardSchemaV1(WordPracticeHistoryDataSchema),
         },
         run: () =>
           runtime.runPromise(
@@ -112,6 +116,20 @@ export const makeWordPracticeHistoryMachine = ({
               const submissions = yield* store.listWordPracticeSubmissions();
               const words = yield* store.listWordEntries();
               const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const today = new Date(now);
+              const todayAttemptCount = submissions.filter((submission) => {
+                const submittedAt = new Date(
+                  _toEpochMillis({
+                    dateTime: submission.submittedAt,
+                  })
+                );
+
+                return (
+                  today.getFullYear() === submittedAt.getFullYear() &&
+                  today.getMonth() === submittedAt.getMonth() &&
+                  today.getDate() === submittedAt.getDate()
+                );
+              }).length;
               const selectionCandidates =
                 WordPracticeSelection.buildSelectionCandidates({
                   batches: batches.map((batch) => ({
@@ -202,27 +220,30 @@ export const makeWordPracticeHistoryMachine = ({
                 };
               });
 
-              return summaries.sort((left, right) => {
-                const selectionWeightDifference =
-                  right.selectionWeight - left.selectionWeight;
+              return {
+                summaries: summaries.sort((left, right) => {
+                  const selectionWeightDifference =
+                    right.selectionWeight - left.selectionWeight;
 
-                if (selectionWeightDifference !== 0) {
-                  return selectionWeightDifference;
-                }
+                  if (selectionWeightDifference !== 0) {
+                    return selectionWeightDifference;
+                  }
 
-                return (
-                  (right.lastSubmittedAt === undefined
-                    ? 0
-                    : _toEpochMillis({
-                        dateTime: right.lastSubmittedAt,
-                      })) -
-                  (left.lastSubmittedAt === undefined
-                    ? 0
-                    : _toEpochMillis({
-                        dateTime: left.lastSubmittedAt,
-                      }))
-                );
-              });
+                  return (
+                    (right.lastSubmittedAt === undefined
+                      ? 0
+                      : _toEpochMillis({
+                          dateTime: right.lastSubmittedAt,
+                        })) -
+                    (left.lastSubmittedAt === undefined
+                      ? 0
+                      : _toEpochMillis({
+                          dateTime: left.lastSubmittedAt,
+                        }))
+                  );
+                }),
+                todayAttemptCount,
+              };
             })
           ),
       }),
@@ -232,6 +253,7 @@ export const makeWordPracticeHistoryMachine = ({
       matchingSummaries: [],
       query: "",
       summaries: [],
+      todayAttemptCount: 0,
     },
     initial: "Loading",
     states: {
@@ -251,7 +273,7 @@ export const makeWordPracticeHistoryMachine = ({
         invoke: {
           src: "loadWordPracticeHistory",
           onDone: ({ context, event }) => {
-            const summaries = event.output;
+            const { summaries, todayAttemptCount } = event.output;
 
             return {
               target: "Ready",
@@ -262,6 +284,7 @@ export const makeWordPracticeHistoryMachine = ({
                 }),
                 message: undefined,
                 summaries,
+                todayAttemptCount,
               },
             };
           },

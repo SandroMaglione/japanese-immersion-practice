@@ -29,9 +29,11 @@ export const Route = createFileRoute("/practice")({
 
 function PracticeRoute() {
   const [snapshot, , actor] = useMachine(practiceOverviewMachine);
+  const isPracticeBatchFinished = snapshot.matches("BatchFinished");
   const isPracticeReady = snapshot.matches("Ready");
   const isPracticeRevealed = snapshot.matches("Revealed");
   const isPracticeRefreshing = snapshot.matches("RefreshingBatch");
+  const isPracticeStartingBatch = snapshot.matches("StartingBatch");
   const isPracticeSubmitting = snapshot.matches("Submitting");
 
   return (
@@ -57,13 +59,21 @@ function PracticeRoute() {
         </div>
       ) : null}
       {isPracticeReady ||
+      isPracticeBatchFinished ||
       isPracticeRevealed ||
       isPracticeRefreshing ||
+      isPracticeStartingBatch ||
       isPracticeSubmitting ? (
         <PracticeSession
           actor={actor}
+          isBatchFinished={isPracticeBatchFinished}
           isRevealed={isPracticeRevealed}
-          isSubmitting={isPracticeSubmitting || isPracticeRefreshing}
+          isStartingBatch={isPracticeStartingBatch}
+          isSubmitting={
+            isPracticeSubmitting ||
+            isPracticeRefreshing ||
+            isPracticeStartingBatch
+          }
         />
       ) : null}
     </div>
@@ -72,13 +82,21 @@ function PracticeRoute() {
 
 function PracticeSession({
   actor,
+  isBatchFinished,
   isRevealed,
+  isStartingBatch,
   isSubmitting,
 }: {
   readonly actor: Actor<typeof practiceOverviewMachine>;
+  readonly isBatchFinished: boolean;
   readonly isRevealed: boolean;
+  readonly isStartingBatch: boolean;
   readonly isSubmitting: boolean;
 }) {
+  const completedBatch = useSelector(
+    actor,
+    (snapshot) => snapshot.context.completedBatch
+  );
   const currentResponse = useSelector(
     actor,
     (snapshot) => snapshot.context.currentResponse
@@ -92,6 +110,10 @@ function PracticeSession({
   const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
   const currentItem = queue[0];
   const isShowingResult = isRevealed && lastResult !== undefined;
+  const isShowingFinishedResult =
+    isShowingResult && lastResult.batchCompleted !== undefined;
+  const isShowingBatchFinished =
+    (isBatchFinished || isStartingBatch) && completedBatch !== undefined;
   const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
   const resultIconLabel =
     lastResult?.isCorrect === true ? "Correct" : "Incorrect";
@@ -102,7 +124,11 @@ function PracticeSession({
       ? 0
       : Math.round((batch.completedCount / batch.totalCount) * 100);
 
-  if (currentItem === undefined && !isShowingResult) {
+  if (
+    currentItem === undefined &&
+    !isShowingResult &&
+    !isShowingBatchFinished
+  ) {
     return (
       <section className="flex min-w-0 flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
         <div>
@@ -131,7 +157,11 @@ function PracticeSession({
                 type="button"
                 aria-label="Refresh batch"
                 className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
-                disabled={isSubmitting}
+                disabled={
+                  isSubmitting ||
+                  isShowingBatchFinished ||
+                  isShowingFinishedResult
+                }
                 focusableWhenDisabled
                 onClick={() => {
                   actor.trigger.refresh();
@@ -177,7 +207,21 @@ function PracticeSession({
         }}
       >
         <div className="flex min-h-36 w-full flex-col items-center justify-center gap-3 sm:min-h-48">
-          {isShowingResult ? (
+          {isShowingBatchFinished ? (
+            <div className="grid w-full justify-items-center gap-3">
+              <h1 className="w-full wrap-break-word text-3xl font-black leading-tight sm:text-5xl">
+                This batch is finished.
+              </h1>
+              <p className="w-full wrap-break-word text-base font-black leading-6 text-ink-muted sm:text-xl">
+                Do you want to start the next?
+              </p>
+              <p className="w-full wrap-break-word text-sm font-bold leading-6 text-ink-muted">
+                Batch {completedBatch.batchNumber} ·{" "}
+                {completedBatch.correctCount}/{completedBatch.totalCount}{" "}
+                correct
+              </p>
+            </div>
+          ) : isShowingResult ? (
             <div className="grid w-full gap-3">
               <ResultIcon
                 aria-label={resultIconLabel}
@@ -217,7 +261,29 @@ function PracticeSession({
             </div>
           )}
         </div>
-        {isShowingResult ? (
+        {isShowingBatchFinished ? (
+          <Button
+            type="button"
+            autoFocus
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:bg-field disabled:text-ink-muted"
+            disabled={isStartingBatch}
+            onClick={() => {
+              actor.trigger.startNextBatch();
+            }}
+          >
+            {isStartingBatch ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={18}
+                strokeWidth={2.5}
+              />
+            ) : (
+              <ArrowRight aria-hidden="true" size={18} strokeWidth={2.5} />
+            )}
+            {isStartingBatch ? "Starting" : "Start next batch"}
+          </Button>
+        ) : isShowingResult ? (
           <Tooltip.Root>
             <Tooltip.Trigger
               render={
@@ -307,7 +373,11 @@ function PracticeSession({
           </div>
         )}
         <div className="min-h-12 text-sm font-bold leading-6 text-ink-muted">
-          {message !== undefined ? (
+          {isShowingBatchFinished ? (
+            message === undefined ? null : (
+              <span className="text-accent">{message}</span>
+            )
+          ) : message !== undefined ? (
             <span className="text-accent">{message}</span>
           ) : lastResult !== undefined ? (
             lastResult.batchCompleted === undefined ? (
