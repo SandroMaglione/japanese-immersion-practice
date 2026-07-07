@@ -94,6 +94,16 @@
     animation: practice-level-up-spark 1.4s ease-out both;
   }
 
+  @media (max-width: 639px) {
+    .review-level-tabs {
+      scrollbar-width: none;
+    }
+
+    .review-level-tabs::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
   .word-history-attempt-strip {
     container-type: inline-size;
   }

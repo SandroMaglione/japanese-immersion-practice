@@ -88,14 +88,14 @@ function WordPracticeLevelsTabs({
     >
       <Tabs.List
         aria-label="Review levels"
-        className="flex w-full min-w-0 overflow-x-auto rounded-md border border-line bg-panel p-1"
+        className="review-level-tabs flex w-full min-w-0 overflow-x-auto rounded-md border border-line bg-panel p-1"
       >
         {levels.map((level) => (
           <Tabs.Tab
             key={level.level}
             value={`${level.level}`}
             className={({ active }: { readonly active: boolean }) =>
-              `inline-flex h-10 min-w-20 shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md px-3 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:min-w-0 sm:flex-1 sm:basis-0 ${
+              `inline-flex h-12 min-w-20 shrink-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:min-w-0 sm:flex-1 sm:basis-0 ${
                 active
                   ? "bg-action text-action-ink hover:bg-action-hover"
                   : "text-ink-muted hover:bg-field hover:text-ink"
@@ -103,7 +103,7 @@ function WordPracticeLevelsTabs({
             }
           >
             <span>Lv {level.level}</span>
-            <span className="shrink-0 rounded-sm border border-current px-1.5 py-0.5 text-[0.7rem] leading-none text-inherit">
+            <span className="text-[0.7rem] leading-none opacity-75">
               {level.words.length}
             </span>
           </Tabs.Tab>
