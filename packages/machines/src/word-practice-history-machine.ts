@@ -1,5 +1,9 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText, WordPracticeSelection } from "@jip/services";
+import {
+  FuriganaText,
+  WordPracticeReview,
+  WordPracticeSelection,
+} from "@jip/services";
 import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
@@ -19,7 +23,12 @@ const WordPracticeHistorySummarySchema = Schema.Struct({
   correctStreak: Schema.Number,
   incorrectCount: Schema.Number,
   incorrectStreak: Schema.Number,
+  isDue: Schema.Boolean,
   lastSubmittedAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
+  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
+  reviewLevel: Schema.Number,
+  reviewProgress: Schema.Number,
+  reviewProgressTarget: Schema.Number,
   selectionWeight: Schema.Number,
   word: IndexedDb.Domain.WordEntry,
 });
@@ -55,6 +64,22 @@ const _submissionResult = ({
     ? "correct"
     : "incorrect");
 
+const _wordPracticeReviewSubmissions = ({
+  submissions,
+  wordText,
+}: {
+  readonly submissions: readonly (typeof IndexedDb.Domain.WordPracticeSubmission.Type)[];
+  readonly wordText: string;
+}) =>
+  submissions
+    .filter((submission) => submission.wordText === wordText)
+    .map((submission) => ({
+      result: _submissionResult({ submission }),
+      submittedAtMillis: _toEpochMillis({
+        dateTime: submission.submittedAt,
+      }),
+    }));
+
 const _filterSummaries = ({
   query,
   summaries,
@@ -75,6 +100,8 @@ const _filterSummaries = ({
       summary.word.translation,
       summary.word.description,
       `${summary.accuracy}`,
+      `level ${summary.reviewLevel}`,
+      summary.isDue ? "due" : "paused",
       ...summary.attempts.map((attempt) => attempt.result),
       ...summary.attempts.map((attempt) => attempt.submission.submittedText),
     ]
@@ -116,6 +143,52 @@ export const makeWordPracticeHistoryMachine = ({
               const submissions = yield* store.listWordPracticeSubmissions();
               const words = yield* store.listWordEntries();
               const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const storedStates = yield* store.listWordPracticeStates();
+              const persistedStates = storedStates.map((state) => {
+                const nextReviewAtMillis =
+                  state.nextReviewAt === undefined
+                    ? undefined
+                    : _toEpochMillis({ dateTime: state.nextReviewAt });
+
+                return {
+                  level: state.level,
+                  levelStartedAtMillis: _toEpochMillis({
+                    dateTime: state.levelStartedAt,
+                  }),
+                  ...(nextReviewAtMillis === undefined
+                    ? {}
+                    : { nextReviewAtMillis }),
+                  wordText: state.wordText,
+                };
+              });
+              const derivedStates = words.flatMap((word) => {
+                const persistedState = persistedStates.find(
+                  (state) => state.wordText === word.text
+                );
+
+                if (persistedState !== undefined) {
+                  return [];
+                }
+
+                const wordSubmissions = _wordPracticeReviewSubmissions({
+                  submissions,
+                  wordText: word.text,
+                });
+
+                if (!EffectArray.isReadonlyArrayNonEmpty(wordSubmissions)) {
+                  return [];
+                }
+
+                return [
+                  {
+                    ...WordPracticeReview.stateFromSubmissions({
+                      submissions: wordSubmissions,
+                    }),
+                    wordText: word.text,
+                  },
+                ];
+              });
+              const states = [...persistedStates, ...derivedStates];
               const today = new Date(now);
               const todayAttemptCount = submissions.filter((submission) => {
                 const submittedAt = new Date(
@@ -147,7 +220,20 @@ export const makeWordPracticeHistoryMachine = ({
                     }),
                     wordText: submission.wordText,
                   })),
-                  words: words.map((word) => ({ text: word.text })),
+                  words: words.map((word) => {
+                    const state = WordPracticeReview.reviewStateForWord({
+                      now,
+                      states,
+                      wordText: word.text,
+                    });
+
+                    return {
+                      ...(state.nextReviewAtMillis === undefined
+                        ? {}
+                        : { nextReviewAtMillis: state.nextReviewAtMillis }),
+                      text: word.text,
+                    };
+                  }),
                 });
               const summaries = words.map((word) => {
                 const attempts = submissions
@@ -197,6 +283,30 @@ export const makeWordPracticeHistoryMachine = ({
                   incorrectStreak += 1;
                 }
 
+                const reviewState = WordPracticeReview.reviewStateForWord({
+                  now,
+                  states,
+                  wordText: word.text,
+                });
+                const reviewSubmissions = _wordPracticeReviewSubmissions({
+                  submissions,
+                  wordText: word.text,
+                });
+                const reviewProgress =
+                  WordPracticeReview.correctProgressAtLevel({
+                    state: reviewState,
+                    submissions: reviewSubmissions,
+                  });
+                const reviewProgressTarget = WordPracticeReview.reviewLevelRule(
+                  {
+                    level: reviewState.level,
+                  }
+                ).correctSubmissionTarget;
+                const nextReviewAt =
+                  reviewState.nextReviewAtMillis === undefined
+                    ? undefined
+                    : DateTime.makeUnsafe(reviewState.nextReviewAtMillis);
+
                 return {
                   accuracy: EffectArray.isReadonlyArrayNonEmpty(attempts)
                     ? Math.round((correctCount / attempts.length) * 100)
@@ -207,11 +317,19 @@ export const makeWordPracticeHistoryMachine = ({
                   correctStreak,
                   incorrectCount: attempts.length - correctCount,
                   incorrectStreak,
+                  isDue: WordPracticeReview.isDue({
+                    now,
+                    state: reviewState,
+                  }),
                   ...(latestAttempt === undefined
                     ? {}
                     : {
                         lastSubmittedAt: latestAttempt.submission.submittedAt,
                       }),
+                  ...(nextReviewAt === undefined ? {} : { nextReviewAt }),
+                  reviewLevel: reviewState.level,
+                  reviewProgress,
+                  reviewProgressTarget,
                   selectionWeight:
                     selectionCandidates.find(
                       (candidate) => candidate.word.text === word.text

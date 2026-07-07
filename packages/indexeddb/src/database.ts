@@ -61,6 +61,13 @@ export class Version3 extends IndexedDbVersion.make(
   Tables.WordPracticeBatchesTable
 ) {}
 
+export class Version4 extends IndexedDbVersion.make(
+  Tables.WordEntriesTable,
+  Tables.WordPracticeSubmissionsTable,
+  Tables.WordPracticeStatesTable,
+  Tables.WordPracticeBatchesTable
+) {}
+
 export class JapanesePracticeDatabase extends IndexedDbDatabase.make(
   Version1,
   Effect.fn("JapanesePracticeDatabase.init")(function* (api) {
@@ -101,6 +108,15 @@ export class JapanesePracticeDatabase extends IndexedDbDatabase.make(
         if (fromApi.transaction.db.objectStoreNames.contains("kanji_entries")) {
           yield* fromApi.deleteObjectStore("kanji_entries");
         }
+      }
+    )
+  )
+  .add(
+    Version4,
+    Effect.fn("JapanesePracticeDatabase.migrateToVersion4")(
+      function* (_fromApi, toApi) {
+        yield* toApi.createObjectStore("word_practice_states");
+        yield* toApi.createIndex("word_practice_states", "byUpdatedAt");
       }
     )
   ) {}

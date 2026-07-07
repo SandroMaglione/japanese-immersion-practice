@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WordRouteImport } from './routes/word'
 import { Route as PracticeRouteImport } from './routes/practice'
+import { Route as LevelsRouteImport } from './routes/levels'
 import { Route as IndexRouteImport } from './routes/index'
 
 const WordRoute = WordRouteImport.update({
@@ -23,6 +24,11 @@ const PracticeRoute = PracticeRouteImport.update({
   path: '/practice',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LevelsRoute = LevelsRouteImport.update({
+  id: '/levels',
+  path: '/levels',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/levels': typeof LevelsRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/levels': typeof LevelsRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/levels': typeof LevelsRoute
   '/practice': typeof PracticeRoute
   '/word': typeof WordRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/practice' | '/word'
+  fullPaths: '/' | '/levels' | '/practice' | '/word'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/practice' | '/word'
-  id: '__root__' | '/' | '/practice' | '/word'
+  to: '/' | '/levels' | '/practice' | '/word'
+  id: '__root__' | '/' | '/levels' | '/practice' | '/word'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  LevelsRoute: typeof LevelsRoute
   PracticeRoute: typeof PracticeRoute
   WordRoute: typeof WordRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PracticeRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/levels': {
+      id: '/levels'
+      path: '/levels'
+      fullPath: '/levels'
+      preLoaderRoute: typeof LevelsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  LevelsRoute: LevelsRoute,
   PracticeRoute: PracticeRoute,
   WordRoute: WordRoute,
 }

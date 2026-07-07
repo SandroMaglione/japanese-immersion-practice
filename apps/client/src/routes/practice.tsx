@@ -12,10 +12,12 @@ import {
   CircleX,
   LoaderCircle,
   RefreshCw,
+  Sparkles,
 } from "lucide-react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
+import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const practiceOverviewMachine =
@@ -106,6 +108,10 @@ function PracticeSession({
     (snapshot) => snapshot.context.lastResult
   );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
+  const nextReviewAt = useSelector(
+    actor,
+    (snapshot) => snapshot.context.nextReviewAt
+  );
   const batch = useSelector(actor, (snapshot) => snapshot.context.batch);
   const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
   const currentItem = queue[0];
@@ -123,18 +129,27 @@ function PracticeSession({
     batch === undefined || batch.totalCount === 0
       ? 0
       : Math.round((batch.completedCount / batch.totalCount) * 100);
+  const didLastResultLevelUp =
+    lastResult !== undefined &&
+    lastResult.reviewLevel > lastResult.previousReviewLevel;
 
   if (
     currentItem === undefined &&
     !isShowingResult &&
     !isShowingBatchFinished
   ) {
+    const hasPausedWords = nextReviewAt !== undefined;
+
     return (
       <section className="flex min-w-0 flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
         <div>
-          <div className="text-lg font-black">No words yet</div>
+          <div className="text-lg font-black">
+            {hasPausedWords ? "All words paused" : "No words yet"}
+          </div>
           <div className="mt-1 text-sm font-semibold text-ink-muted">
-            Add a few entries to shape the first practice session.
+            {hasPausedWords
+              ? `Next review ${formatDateTime({ dateTime: nextReviewAt })}`
+              : "Add a few entries to shape the first practice session."}
           </div>
         </div>
         <Link
@@ -372,7 +387,7 @@ function PracticeSession({
             </Tooltip.Root>
           </div>
         )}
-        <div className="min-h-12 text-sm font-bold leading-6 text-ink-muted">
+        <div className="grid min-h-12 w-full justify-items-center gap-2 text-sm font-bold leading-6 text-ink-muted">
           {isShowingBatchFinished ? (
             message === undefined ? null : (
               <span className="text-accent">{message}</span>
@@ -381,31 +396,95 @@ function PracticeSession({
             <span className="text-accent">{message}</span>
           ) : lastResult !== undefined ? (
             lastResult.batchCompleted === undefined ? (
-              <span>
-                <span
-                  className={lastResult.isCorrect ? "text-teal" : "text-accent"}
-                >
-                  {lastResult.isCorrect ? "Correct" : "Incorrect"}
-                </span>
-                <span className="text-ink-muted">
-                  {" "}
-                  · Batch {lastResult.batchNumber}
-                </span>
-              </span>
+              <div className="grid max-w-full justify-items-center gap-1">
+                <p>
+                  <span
+                    className={
+                      lastResult.isCorrect ? "text-teal" : "text-accent"
+                    }
+                  >
+                    {lastResult.isCorrect ? "Correct" : "Incorrect"}
+                  </span>
+                  <span className="text-ink-muted">
+                    {" "}
+                    · Batch {lastResult.batchNumber}
+                  </span>
+                </p>
+                {didLastResultLevelUp ? (
+                  <div className="practice-level-up mt-2 grid max-w-full gap-1 rounded-md border border-gold/60 px-4 py-3 text-left shadow-[0_12px_42px_rgba(232,197,107,0.16)]">
+                    <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase text-gold">
+                      <Sparkles
+                        aria-hidden="true"
+                        className="practice-level-up-icon shrink-0"
+                        size={15}
+                        strokeWidth={2.5}
+                      />
+                      Level up
+                    </span>
+                    <span className="wrap-break-word text-base font-black leading-6 text-ink">
+                      Level {lastResult.previousReviewLevel} →{" "}
+                      {lastResult.reviewLevel}
+                    </span>
+                  </div>
+                ) : null}
+                {didLastResultLevelUp ? null : (
+                  <span className="text-ink-muted">
+                    Level {lastResult.reviewLevel} · {lastResult.reviewProgress}
+                    /{lastResult.reviewProgressTarget}
+                  </span>
+                )}
+                {lastResult.nextReviewAt === undefined ? null : (
+                  <span className="text-ink-muted">
+                    Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
+                  </span>
+                )}
+              </div>
             ) : (
-              <span>
-                <span
-                  className={lastResult.isCorrect ? "text-teal" : "text-accent"}
-                >
-                  {lastResult.isCorrect ? "Correct" : "Incorrect"}
-                </span>
-                <span className="text-ink-muted">
-                  {" "}
-                  · Batch {lastResult.batchCompleted.batchNumber} complete ·{" "}
-                  {lastResult.batchCompleted.correctCount}/
-                  {lastResult.batchCompleted.totalCount} correct
-                </span>
-              </span>
+              <div className="grid max-w-full justify-items-center gap-1">
+                <p>
+                  <span
+                    className={
+                      lastResult.isCorrect ? "text-teal" : "text-accent"
+                    }
+                  >
+                    {lastResult.isCorrect ? "Correct" : "Incorrect"}
+                  </span>
+                  <span className="text-ink-muted">
+                    {" "}
+                    · Batch {lastResult.batchCompleted.batchNumber} complete ·{" "}
+                    {lastResult.batchCompleted.correctCount}/
+                    {lastResult.batchCompleted.totalCount} correct
+                  </span>
+                </p>
+                {didLastResultLevelUp ? (
+                  <div className="practice-level-up mt-2 grid max-w-full gap-1 rounded-md border border-gold/60 px-4 py-3 text-left shadow-[0_12px_42px_rgba(232,197,107,0.16)]">
+                    <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase text-gold">
+                      <Sparkles
+                        aria-hidden="true"
+                        className="practice-level-up-icon shrink-0"
+                        size={15}
+                        strokeWidth={2.5}
+                      />
+                      Level up
+                    </span>
+                    <span className="wrap-break-word text-base font-black leading-6 text-ink">
+                      Level {lastResult.previousReviewLevel} →{" "}
+                      {lastResult.reviewLevel}
+                    </span>
+                  </div>
+                ) : null}
+                {didLastResultLevelUp ? null : (
+                  <span className="text-ink-muted">
+                    Level {lastResult.reviewLevel} · {lastResult.reviewProgress}
+                    /{lastResult.reviewProgressTarget}
+                  </span>
+                )}
+                {lastResult.nextReviewAt === undefined ? null : (
+                  <span className="text-ink-muted">
+                    Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
+                  </span>
+                )}
+              </div>
             )
           ) : null}
         </div>

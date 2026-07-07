@@ -1,5 +1,9 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText, WordPracticeSelection } from "@jip/services";
+import {
+  FuriganaText,
+  WordPracticeReview,
+  WordPracticeSelection,
+} from "@jip/services";
 import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
@@ -26,6 +30,9 @@ const PracticeQueueItemSchema = Schema.Struct({
   correctStreak: Schema.Number,
   incorrectStreak: Schema.Number,
   priorityScore: Schema.Number,
+  reviewLevel: Schema.Number,
+  reviewProgress: Schema.Number,
+  reviewProgressTarget: Schema.Number,
   word: IndexedDb.Domain.WordEntry,
 });
 
@@ -33,6 +40,11 @@ const PracticeSubmissionResultSchema = Schema.Struct({
   batchCompleted: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
   batchNumber: Schema.Number,
   isCorrect: Schema.Boolean,
+  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
+  previousReviewLevel: Schema.Number,
+  reviewLevel: Schema.Number,
+  reviewProgress: Schema.Number,
+  reviewProgressTarget: Schema.Number,
   wordDescription: Schema.optionalKey(Schema.String),
   wordText: Schema.String,
   wordTranslation: Schema.String,
@@ -43,7 +55,12 @@ const PracticeSubmitResultSchema = Schema.Struct({
   batchCompleted: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
   batchNumber: Schema.Number,
   isCorrect: Schema.Boolean,
+  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
+  previousReviewLevel: Schema.Number,
   queue: Schema.Array(PracticeQueueItemSchema),
+  reviewLevel: Schema.Number,
+  reviewProgress: Schema.Number,
+  reviewProgressTarget: Schema.Number,
   wordDescription: Schema.optionalKey(Schema.String),
   wordText: Schema.String,
   wordTranslation: Schema.String,
@@ -52,6 +69,7 @@ const PracticeSubmitResultSchema = Schema.Struct({
 const PracticeSessionDataSchema = Schema.Struct({
   batch: Schema.optionalKey(PracticeBatchSummarySchema),
   completedBatch: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
+  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
   queue: Schema.Array(PracticeQueueItemSchema),
 });
 
@@ -61,6 +79,7 @@ const PracticeOverviewContextSchema = Schema.Struct({
   currentResponse: Schema.String,
   lastResult: Schema.optionalKey(PracticeSubmissionResultSchema),
   message: Schema.optionalKey(Schema.String),
+  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
   queue: Schema.Array(PracticeQueueItemSchema),
 });
 
@@ -115,14 +134,111 @@ const _toWordPracticeSelectionSubmission = ({
   wordText: submission.wordText,
 });
 
+const _toWordPracticeReviewSubmission = ({
+  submission,
+}: {
+  readonly submission: WordPracticeSubmission;
+}): WordPracticeReview.WordPracticeReviewSubmission => ({
+  result: _submissionResult({ submission }),
+  submittedAtMillis: _toEpochMillis({ dateTime: submission.submittedAt }),
+});
+
+const _wordPracticeReviewSubmissions = ({
+  submissions,
+  wordText,
+}: {
+  readonly submissions: readonly WordPracticeSubmission[];
+  readonly wordText: string;
+}) =>
+  submissions
+    .filter((submission) => submission.wordText === wordText)
+    .map((submission) => _toWordPracticeReviewSubmission({ submission }));
+
+const _buildWordPracticeReviewStates = ({
+  states,
+  submissions,
+  words,
+}: {
+  readonly states: readonly (typeof IndexedDb.Domain.WordPracticeState.Type)[];
+  readonly submissions: readonly WordPracticeSubmission[];
+  readonly words: readonly WordEntry[];
+}) => {
+  const persistedStates = states.map((state) => {
+    const nextReviewAtMillis =
+      state.nextReviewAt === undefined
+        ? undefined
+        : _toEpochMillis({ dateTime: state.nextReviewAt });
+
+    return {
+      level: state.level,
+      levelStartedAtMillis: _toEpochMillis({
+        dateTime: state.levelStartedAt,
+      }),
+      ...(nextReviewAtMillis === undefined ? {} : { nextReviewAtMillis }),
+      wordText: state.wordText,
+    };
+  });
+  const derivedStates = words.flatMap((word) => {
+    const persistedState = persistedStates.find(
+      (state) => state.wordText === word.text
+    );
+
+    if (persistedState !== undefined) {
+      return [];
+    }
+
+    const wordSubmissions = _wordPracticeReviewSubmissions({
+      submissions,
+      wordText: word.text,
+    });
+
+    if (!EffectArray.isReadonlyArrayNonEmpty(wordSubmissions)) {
+      return [];
+    }
+
+    return [
+      {
+        ...WordPracticeReview.stateFromSubmissions({
+          submissions: wordSubmissions,
+        }),
+        wordText: word.text,
+      },
+    ];
+  });
+
+  return [...persistedStates, ...derivedStates];
+};
+
+const _nextReviewAtForWords = ({
+  now,
+  states,
+  words,
+}: {
+  readonly now: number;
+  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
+  readonly words: readonly WordEntry[];
+}) => {
+  const nextReviewAtMillis = WordPracticeReview.nextReviewAtMillisForWordTexts({
+    now,
+    states,
+    wordTexts: words.map((word) => word.text),
+  });
+
+  return nextReviewAtMillis === undefined
+    ? undefined
+    : DateTime.makeUnsafe(nextReviewAtMillis);
+};
+
 const _buildWordPracticeWordOrder = ({
   batches,
   now,
+  states,
   submissions,
   words,
 }: {
   readonly batches: readonly WordPracticeBatch[];
   readonly now: number;
+  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
   readonly submissions: readonly WordPracticeSubmission[];
   readonly words: readonly WordEntry[];
 }) =>
@@ -136,7 +252,20 @@ const _buildWordPracticeWordOrder = ({
     submissions: submissions.map((submission) =>
       _toWordPracticeSelectionSubmission({ submission })
     ),
-    words: words.map((word) => ({ text: word.text })),
+    words: words.map((word) => {
+      const state = WordPracticeReview.reviewStateForWord({
+        now,
+        states,
+        wordText: word.text,
+      });
+
+      return {
+        ...(state.nextReviewAtMillis === undefined
+          ? {}
+          : { nextReviewAtMillis: state.nextReviewAtMillis }),
+        text: word.text,
+      };
+    }),
   });
 
 const _makePracticeBatch = ({
@@ -198,10 +327,14 @@ const _batchSubmissions = ({
 
 const _buildPracticeQueue = ({
   batch,
+  now,
+  states,
   submissions,
   words,
 }: {
   readonly batch: WordPracticeBatch;
+  readonly now: number;
+  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
   readonly submissions: readonly WordPracticeSubmission[];
   readonly words: readonly WordEntry[];
 }) => {
@@ -224,6 +357,21 @@ const _buildPracticeQueue = ({
     const submissionsForWord = submissions
       .filter((submission) => submission.wordText === wordText)
       .map((submission) => _toWordPracticeSelectionSubmission({ submission }));
+    const reviewSubmissions = submissions
+      .filter((submission) => submission.wordText === wordText)
+      .map((submission) => _toWordPracticeReviewSubmission({ submission }));
+    const reviewState = WordPracticeReview.reviewStateForWord({
+      now,
+      states,
+      wordText,
+    });
+    const reviewProgress = WordPracticeReview.correctProgressAtLevel({
+      state: reviewState,
+      submissions: reviewSubmissions,
+    });
+    const reviewProgressTarget = WordPracticeReview.reviewLevelRule({
+      level: reviewState.level,
+    }).correctSubmissionTarget;
 
     return [
       {
@@ -239,6 +387,9 @@ const _buildPracticeQueue = ({
         priorityScore: WordPracticeSelection.priorityScore({
           submissions: submissionsForWord,
         }),
+        reviewLevel: reviewState.level,
+        reviewProgress,
+        reviewProgressTarget,
         word,
       },
     ];
@@ -343,6 +494,12 @@ export const makePracticeOverviewMachine = ({
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const storedStates = yield* store.listWordPracticeStates();
+              const states = _buildWordPracticeReviewStates({
+                states: storedStates,
+                submissions,
+                words,
+              });
               const existingActiveBatch = _activePracticeBatch({ batches });
 
               if (existingActiveBatch === undefined) {
@@ -369,17 +526,37 @@ export const makePracticeOverviewMachine = ({
 
               const batch =
                 existingActiveBatch === undefined
-                  ? yield* _makePracticeBatch({
-                      batchNumber: _nextBatchNumber({ batches }),
-                      startedAt: now,
-                      wordOrder: _buildWordPracticeWordOrder({
+                  ? yield* Effect.gen(function* () {
+                      const wordOrder = _buildWordPracticeWordOrder({
                         batches,
                         now,
+                        states,
                         submissions,
                         words,
-                      }),
+                      });
+
+                      if (!EffectArray.isReadonlyArrayNonEmpty(wordOrder)) {
+                        return undefined;
+                      }
+
+                      return yield* _makePracticeBatch({
+                        batchNumber: _nextBatchNumber({ batches }),
+                        startedAt: now,
+                        wordOrder,
+                      });
                     })
                   : existingActiveBatch;
+
+              if (batch === undefined) {
+                return {
+                  nextReviewAt: _nextReviewAtForWords({
+                    now,
+                    states,
+                    words,
+                  }),
+                  queue: [],
+                };
+              }
 
               if (existingActiveBatch === undefined) {
                 yield* store.insertWordPracticeBatch(batch);
@@ -387,6 +564,8 @@ export const makePracticeOverviewMachine = ({
 
               const queue = _buildPracticeQueue({
                 batch,
+                now,
+                states,
                 submissions,
                 words,
               });
@@ -408,6 +587,11 @@ export const makePracticeOverviewMachine = ({
                   completedBatch: _buildCompletedBatchSummary({
                     batch: completedBatch,
                     submissions,
+                    words,
+                  }),
+                  nextReviewAt: _nextReviewAtForWords({
+                    now,
+                    states,
                     words,
                   }),
                   queue: [],
@@ -444,16 +628,45 @@ export const makePracticeOverviewMachine = ({
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const storedStates = yield* store.listWordPracticeStates();
+              const states = _buildWordPracticeReviewStates({
+                states: storedStates,
+                submissions,
+                words,
+              });
               const activeBatch = _activePracticeBatch({ batches });
+              const wordOrder = _buildWordPracticeWordOrder({
+                batches,
+                now,
+                states,
+                submissions,
+                words,
+              });
+
+              if (!EffectArray.isReadonlyArrayNonEmpty(wordOrder)) {
+                if (activeBatch !== undefined) {
+                  const completedBatch = yield* _completePracticeBatch({
+                    batch: activeBatch,
+                    completedAt: now,
+                  });
+
+                  yield* store.upsertWordPracticeBatch(completedBatch);
+                }
+
+                return {
+                  nextReviewAt: _nextReviewAtForWords({
+                    now,
+                    states,
+                    words,
+                  }),
+                  queue: [],
+                };
+              }
+
               const nextBatch = yield* _makePracticeBatch({
                 batchNumber: _nextBatchNumber({ batches }),
                 startedAt: now,
-                wordOrder: _buildWordPracticeWordOrder({
-                  batches,
-                  now,
-                  submissions,
-                  words,
-                }),
+                wordOrder,
               });
 
               if (activeBatch === undefined) {
@@ -470,6 +683,8 @@ export const makePracticeOverviewMachine = ({
 
               const nextQueue = _buildPracticeQueue({
                 batch: nextBatch,
+                now,
+                states,
                 submissions,
                 words,
               });
@@ -529,22 +744,86 @@ export const makePracticeOverviewMachine = ({
                 submittedText,
                 wordText: word.text,
               });
+              const result = isCorrect ? "correct" : "incorrect";
+              const previousSubmissions =
+                yield* store.listWordPracticeSubmissions();
+              const storedStates = yield* store.listWordPracticeStates();
+              const states = _buildWordPracticeReviewStates({
+                states: storedStates,
+                submissions: previousSubmissions,
+                words,
+              });
+              const previousReviewState = WordPracticeReview.reviewStateForWord(
+                {
+                  now: submittedAt,
+                  states,
+                  wordText: word.text,
+                }
+              );
+              const wordSubmissions = _wordPracticeReviewSubmissions({
+                submissions: previousSubmissions,
+                wordText: word.text,
+              });
+              const nextReviewState = WordPracticeReview.applyPracticeResult({
+                now: submittedAt,
+                result,
+                state: previousReviewState,
+                submissions: wordSubmissions,
+              });
+              const nextReviewWordState = {
+                ...nextReviewState,
+                wordText: word.text,
+              };
+              const wordPracticeState = yield* Schema.decodeEffect(
+                IndexedDb.Domain.WordPracticeState
+              )({
+                level: nextReviewWordState.level,
+                levelStartedAt: nextReviewWordState.levelStartedAtMillis,
+                ...(nextReviewWordState.nextReviewAtMillis === undefined
+                  ? {}
+                  : { nextReviewAt: nextReviewWordState.nextReviewAtMillis }),
+                updatedAt: submittedAt,
+                wordText: nextReviewWordState.wordText,
+              });
               const submission = yield* Schema.decodeEffect(
                 IndexedDb.Domain.WordPracticeSubmission
               )({
                 batchId: batch.id,
                 batchPosition: input.batchPosition,
                 id: crypto.randomUUID(),
-                result: isCorrect ? "correct" : "incorrect",
+                ...(nextReviewState.nextReviewAtMillis === undefined
+                  ? {}
+                  : { nextReviewAt: nextReviewState.nextReviewAtMillis }),
+                result,
                 submittedAt,
                 submittedText,
                 wordText: word.text,
               });
-              const previousSubmissions =
-                yield* store.listWordPracticeSubmissions();
               const submissions = [...previousSubmissions, submission];
+              const statesAfterSubmission = [
+                ...states.filter((state) => state.wordText !== word.text),
+                nextReviewWordState,
+              ];
+              const reviewSubmissionsAfterSubmission = submissions
+                .filter(
+                  (nextSubmission) => nextSubmission.wordText === word.text
+                )
+                .map((nextSubmission) =>
+                  _toWordPracticeReviewSubmission({
+                    submission: nextSubmission,
+                  })
+                );
+              const reviewProgress = WordPracticeReview.correctProgressAtLevel({
+                state: nextReviewState,
+                submissions: reviewSubmissionsAfterSubmission,
+              });
+              const reviewProgressTarget = WordPracticeReview.reviewLevelRule({
+                level: nextReviewState.level,
+              }).correctSubmissionTarget;
               const queueAfterSubmission = _buildPracticeQueue({
                 batch,
+                now: submittedAt,
+                states: statesAfterSubmission,
                 submissions,
                 words,
               });
@@ -560,8 +839,9 @@ export const makePracticeOverviewMachine = ({
                   words,
                 });
 
-                yield* store.saveWordPracticeSubmissionAndBatches({
+                yield* store.saveWordPracticeSubmissionStateAndBatches({
                   batches: [completedBatch],
+                  state: wordPracticeState,
                   submission,
                 });
 
@@ -574,7 +854,14 @@ export const makePracticeOverviewMachine = ({
                   batchCompleted: completedBatchSummary,
                   batchNumber: batch.batchNumber,
                   isCorrect,
+                  ...(wordPracticeState.nextReviewAt === undefined
+                    ? {}
+                    : { nextReviewAt: wordPracticeState.nextReviewAt }),
+                  previousReviewLevel: previousReviewState.level,
                   queue: [],
+                  reviewLevel: nextReviewState.level,
+                  reviewProgress,
+                  reviewProgressTarget,
                   ...(word.description === undefined
                     ? {}
                     : { wordDescription: word.description }),
@@ -583,8 +870,9 @@ export const makePracticeOverviewMachine = ({
                 };
               }
 
-              yield* store.saveWordPracticeSubmissionAndBatches({
+              yield* store.saveWordPracticeSubmissionStateAndBatches({
                 batches: [],
+                state: wordPracticeState,
                 submission,
               });
 
@@ -596,7 +884,14 @@ export const makePracticeOverviewMachine = ({
                 }),
                 batchNumber: batch.batchNumber,
                 isCorrect,
+                ...(wordPracticeState.nextReviewAt === undefined
+                  ? {}
+                  : { nextReviewAt: wordPracticeState.nextReviewAt }),
+                previousReviewLevel: previousReviewState.level,
                 queue: queueAfterSubmission,
+                reviewLevel: nextReviewState.level,
+                reviewProgress,
+                reviewProgressTarget,
                 ...(word.description === undefined
                   ? {}
                   : { wordDescription: word.description }),
@@ -627,6 +922,7 @@ export const makePracticeOverviewMachine = ({
               completedBatch: event.output.completedBatch,
               lastResult: undefined,
               message: undefined,
+              nextReviewAt: event.output.nextReviewAt,
               queue: event.output.queue,
             },
           }),
@@ -668,6 +964,7 @@ export const makePracticeOverviewMachine = ({
               currentResponse: "",
               lastResult: undefined,
               message: undefined,
+              nextReviewAt: event.output.nextReviewAt,
               queue: event.output.queue,
             },
           }),
@@ -701,11 +998,17 @@ export const makePracticeOverviewMachine = ({
                 batchCompleted: event.output.batchCompleted,
                 batchNumber: event.output.batchNumber,
                 isCorrect: event.output.isCorrect,
+                nextReviewAt: event.output.nextReviewAt,
+                previousReviewLevel: event.output.previousReviewLevel,
+                reviewLevel: event.output.reviewLevel,
+                reviewProgress: event.output.reviewProgress,
+                reviewProgressTarget: event.output.reviewProgressTarget,
                 wordDescription: event.output.wordDescription,
                 wordText: event.output.wordText,
                 wordTranslation: event.output.wordTranslation,
               },
               message: undefined,
+              nextReviewAt: undefined,
               queue: event.output.queue,
             },
           }),
@@ -735,6 +1038,7 @@ export const makePracticeOverviewMachine = ({
                   context: {
                     lastResult: undefined,
                     message: undefined,
+                    nextReviewAt: undefined,
                   },
                 }
               : {
@@ -766,6 +1070,7 @@ export const makePracticeOverviewMachine = ({
               currentResponse: "",
               lastResult: undefined,
               message: undefined,
+              nextReviewAt: event.output.nextReviewAt,
               queue: event.output.queue,
             },
           }),

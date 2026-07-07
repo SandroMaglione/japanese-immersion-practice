@@ -1,6 +1,6 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
 import { Tooltip } from "@base-ui/react/tooltip";
-import { Dumbbell, ListChecks, WholeWord } from "lucide-react";
+import { Dumbbell, ListChecks, ListOrdered, WholeWord } from "lucide-react";
 
 export const Route = createRootRoute({
   component: RootRoute,
@@ -34,6 +34,30 @@ function RootRoute() {
               <Tooltip.Positioner sideOffset={8}>
                 <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
                   Word
+                </Tooltip.Popup>
+              </Tooltip.Positioner>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+          <Tooltip.Root>
+            <Tooltip.Trigger
+              render={
+                <Link
+                  to="/levels"
+                  aria-label="Review levels"
+                  activeProps={{
+                    className:
+                      "!bg-action !text-action-ink hover:!bg-action-hover hover:!text-action-ink",
+                  }}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+                />
+              }
+            >
+              <ListOrdered size={18} strokeWidth={2.5} />
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Positioner sideOffset={8}>
+                <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
+                  Review levels
                 </Tooltip.Popup>
               </Tooltip.Positioner>
             </Tooltip.Portal>

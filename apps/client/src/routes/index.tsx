@@ -23,7 +23,7 @@ const VisibleAttemptLimit = 8;
 const dialogBackdropClassName = "fixed inset-0 bg-paper/70 backdrop-blur-sm";
 
 const dialogPopupClassName =
-  "fixed left-1/2 top-1/2 grid max-h-[min(calc(100vh-2rem),44rem)] w-[min(calc(100vw-2rem),44rem)] -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_minmax(0,1fr)] gap-5 rounded-md border border-line bg-panel p-5 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none";
+  "fixed left-1/2 top-1/2 grid h-[min(calc(100svh-1rem),44rem)] w-[min(calc(100vw-1rem),44rem)] -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden rounded-md border border-line bg-panel p-4 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none sm:h-[min(calc(100svh-2rem),44rem)] sm:w-[min(calc(100vw-2rem),44rem)] sm:gap-5 sm:p-5";
 
 const dialogIconButtonClassName =
   "inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky";
@@ -218,6 +218,10 @@ function WordHistoryDetailsDialog({
       : summary.incorrectStreak > 0
         ? `${summary.incorrectStreak} missed`
         : "None";
+  const reviewStatusLabel =
+    summary.nextReviewAt === undefined || summary.isDue
+      ? "Due now"
+      : `Paused until ${formatDateTime({ dateTime: summary.nextReviewAt })}`;
 
   return (
     <Dialog.Root>
@@ -239,74 +243,83 @@ function WordHistoryDetailsDialog({
         <Dialog.Portal>
           <Dialog.Backdrop className={dialogBackdropClassName} />
           <Dialog.Popup className={dialogPopupClassName}>
-            <div className="grid gap-4">
-              <div className="flex min-w-0 items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <Dialog.Title className="wrap-break-word text-2xl font-black leading-tight">
-                    <WordText text={summary.word.text} />
-                  </Dialog.Title>
-                  <Dialog.Description className="mt-2 wrap-break-word text-sm font-bold leading-6 text-ink-muted">
-                    {summary.word.translation}
-                  </Dialog.Description>
-                </div>
-                <Dialog.Close
-                  aria-label="Close word details"
-                  className={dialogIconButtonClassName}
-                >
-                  <X size={16} strokeWidth={2.5} />
-                </Dialog.Close>
+            <div className="flex min-w-0 items-start justify-between gap-4">
+              <div className="min-w-0">
+                <Dialog.Title className="wrap-break-word text-2xl font-black leading-tight">
+                  <WordText text={summary.word.text} />
+                </Dialog.Title>
               </div>
-              {summary.word.description === undefined ? null : (
-                <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
-                  {summary.word.description}
-                </p>
-              )}
-              <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <WordHistoryStat
-                  label="Selection"
-                  value={
-                    <SelectionPriorityValue
-                      scale={selectionPriorityScale}
-                      selectionWeight={summary.selectionWeight}
-                    />
-                  }
-                />
-                <WordHistoryStat
-                  label="Accuracy"
-                  value={`${summary.accuracy}%`}
-                />
-                <WordHistoryStat
-                  label="Attempts"
-                  value={`${summary.attemptCount}`}
-                />
-                <WordHistoryStat
-                  label="Correct"
-                  value={`${summary.correctCount}`}
-                />
-                <WordHistoryStat label="Streak" value={streakLabel} />
-              </dl>
-              {summary.lastSubmittedAt === undefined ? null : (
-                <p className="text-xs font-black text-ink-muted">
-                  Last attempted{" "}
-                  {formatDateTime({ dateTime: summary.lastSubmittedAt })}
-                </p>
-              )}
+              <Dialog.Close
+                aria-label="Close word details"
+                className={dialogIconButtonClassName}
+              >
+                <X size={16} strokeWidth={2.5} />
+              </Dialog.Close>
             </div>
-            <div className="min-h-0 overflow-y-auto pr-1">
-              {EffectArray.isReadonlyArrayNonEmpty(summary.attempts) ? (
-                <div className="divide-y divide-line">
-                  {summary.attempts.map((attempt) => (
-                    <WordHistoryAttemptRow
-                      key={attempt.submission.id}
-                      attempt={attempt}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="py-6 text-sm font-bold text-ink-muted">
-                  No attempts yet.
-                </div>
-              )}
+            <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
+              <div className="grid gap-4">
+                <Dialog.Description className="wrap-break-word text-sm font-bold leading-6 text-ink-muted">
+                  {summary.word.translation}
+                </Dialog.Description>
+                {summary.word.description === undefined ? null : (
+                  <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
+                    {summary.word.description}
+                  </p>
+                )}
+                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <WordHistoryStat
+                    label="Level"
+                    value={`Level ${summary.reviewLevel}`}
+                  />
+                  <WordHistoryStat
+                    label="Progress"
+                    value={`${summary.reviewProgress}/${summary.reviewProgressTarget}`}
+                  />
+                  <WordHistoryStat label="Review" value={reviewStatusLabel} />
+                  <WordHistoryStat
+                    label="Selection"
+                    value={
+                      <SelectionPriorityValue
+                        scale={selectionPriorityScale}
+                        selectionWeight={summary.selectionWeight}
+                      />
+                    }
+                  />
+                  <WordHistoryStat
+                    label="Accuracy"
+                    value={`${summary.accuracy}%`}
+                  />
+                  <WordHistoryStat
+                    label="Attempts"
+                    value={`${summary.attemptCount}`}
+                  />
+                  <WordHistoryStat
+                    label="Correct"
+                    value={`${summary.correctCount}`}
+                  />
+                  <WordHistoryStat label="Streak" value={streakLabel} />
+                </dl>
+                {summary.lastSubmittedAt === undefined ? null : (
+                  <p className="text-xs font-black text-ink-muted">
+                    Last attempted{" "}
+                    {formatDateTime({ dateTime: summary.lastSubmittedAt })}
+                  </p>
+                )}
+                {EffectArray.isReadonlyArrayNonEmpty(summary.attempts) ? (
+                  <div className="divide-y divide-line">
+                    {summary.attempts.map((attempt) => (
+                      <WordHistoryAttemptRow
+                        key={attempt.submission.id}
+                        attempt={attempt}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 text-sm font-bold text-ink-muted">
+                    No attempts yet.
+                  </div>
+                )}
+              </div>
             </div>
           </Dialog.Popup>
         </Dialog.Portal>

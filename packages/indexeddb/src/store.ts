@@ -42,6 +42,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           tables: [
             "word_entries",
             "word_practice_batches",
+            "word_practice_states",
             "word_practice_submissions",
           ],
           mode: "readwrite",
@@ -54,8 +55,16 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
             const batches = yield* db
               .from("word_practice_batches")
               .select("byStartedAt");
+            const states = yield* db
+              .from("word_practice_states")
+              .select()
+              .equals(originalText);
             const updatedSubmissions = submissions.map((submission) => ({
               ...submission,
+              wordText: wordEntry.text,
+            }));
+            const updatedStates = states.map((state) => ({
+              ...state,
               wordText: wordEntry.text,
             }));
             const updatedBatches = batches
@@ -72,6 +81,11 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
             yield* db
               .from("word_practice_submissions")
               .upsertAll(updatedSubmissions);
+            yield* db
+              .from("word_practice_states")
+              .delete()
+              .equals(originalText);
+            yield* db.from("word_practice_states").upsertAll(updatedStates);
             yield* db.from("word_practice_batches").upsertAll(updatedBatches);
           })
         );
@@ -84,6 +98,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           tables: [
             "word_entries",
             "word_practice_batches",
+            "word_practice_states",
             "word_practice_submissions",
           ],
           mode: "readwrite",
@@ -107,6 +122,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
 
             yield* Effect.all([
               db.from("word_entries").delete().equals(text),
+              db.from("word_practice_states").delete().equals(text),
               Effect.all(
                 submissions.map((submission) =>
                   db
@@ -127,6 +143,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
             tables: [
               "word_entries",
               "word_practice_batches",
+              "word_practice_states",
               "word_practice_submissions",
             ],
             mode: "readwrite",
@@ -134,6 +151,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
             Effect.all([
               db.from("word_entries").clear,
               db.from("word_practice_batches").clear,
+              db.from("word_practice_states").clear,
               db.from("word_practice_submissions").clear,
             ])
           );
@@ -171,6 +189,38 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         );
       }),
 
+      saveWordPracticeSubmissionStateAndBatches: Effect.fn(
+        "Store.saveWordPracticeSubmissionStateAndBatches"
+      )(function* ({
+        batches,
+        state,
+        submission,
+      }: {
+        readonly batches: readonly Domain.WordPracticeBatch[];
+        readonly state: Domain.WordPracticeState;
+        readonly submission: Domain.WordPracticeSubmission;
+      }) {
+        yield* db.withTransaction({
+          tables: [
+            "word_practice_batches",
+            "word_practice_states",
+            "word_practice_submissions",
+          ],
+          mode: "readwrite",
+        })(
+          Effect.gen(function* () {
+            yield* db.from("word_practice_submissions").insert(submission);
+            yield* db.from("word_practice_states").upsert(state);
+
+            if (!EffectArray.isReadonlyArrayNonEmpty(batches)) {
+              return;
+            }
+
+            yield* db.from("word_practice_batches").upsertAll([...batches]);
+          })
+        );
+      }),
+
       listWordPracticeSubmissions: Effect.fn(
         "Store.listWordPracticeSubmissions"
       )(function* () {
@@ -188,6 +238,38 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           .select("byWordText")
           .equals(wordText);
       }),
+
+      listWordPracticeStates: Effect.fn("Store.listWordPracticeStates")(
+        function* () {
+          return yield* db
+            .from("word_practice_states")
+            .select("byUpdatedAt")
+            .reverse();
+        }
+      ),
+
+      getWordPracticeState: Effect.fn("Store.getWordPracticeState")(function* (
+        wordText: Domain.WordPracticeState["wordText"]
+      ) {
+        const states = yield* db
+          .from("word_practice_states")
+          .select()
+          .equals(wordText);
+
+        return states[0];
+      }),
+
+      upsertWordPracticeState: Effect.fn("Store.upsertWordPracticeState")(
+        function* (state: Domain.WordPracticeState) {
+          yield* db.from("word_practice_states").upsert(state);
+        }
+      ),
+
+      upsertWordPracticeStates: Effect.fn("Store.upsertWordPracticeStates")(
+        function* (states: readonly Domain.WordPracticeState[]) {
+          yield* db.from("word_practice_states").upsertAll([...states]);
+        }
+      ),
 
       listWordPracticeBatches: Effect.fn("Store.listWordPracticeBatches")(
         function* () {

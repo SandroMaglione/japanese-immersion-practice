@@ -11,6 +11,7 @@ type WordPracticeSelectionBatch = {
 };
 
 type WordPracticeSelectionWord = {
+  readonly nextReviewAtMillis?: number;
   readonly text: string;
 };
 
@@ -185,7 +186,7 @@ export const buildWordOrder = ({
     now,
     submissions,
     words,
-  });
+  }).filter((candidate) => candidate.isDue);
   const remainingCandidates = [...candidates];
   const selectedWordTexts: string[] = [];
 
@@ -264,6 +265,18 @@ export const buildSelectionCandidates = ({
     .slice(-RecentSubmissionCooldownLimit)
     .reverse();
   const candidates = words.map((word) => {
+    const isDue =
+      word.nextReviewAtMillis === undefined || word.nextReviewAtMillis <= now;
+
+    if (!isDue) {
+      return {
+        isDue,
+        nextReviewAtMillis: word.nextReviewAtMillis,
+        selectionWeight: 0,
+        word,
+      };
+    }
+
     const wordSubmissions = submissions.filter(
       (submission) => submission.wordText === word.text
     );
@@ -346,6 +359,8 @@ export const buildSelectionCandidates = ({
       cooldownPenalty;
 
     return {
+      isDue,
+      nextReviewAtMillis: word.nextReviewAtMillis,
       selectionWeight: Math.max(MinimumSelectionWeight, rawSelectionWeight),
       word,
     };

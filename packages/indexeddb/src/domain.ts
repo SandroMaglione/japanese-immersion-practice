@@ -39,6 +39,16 @@ export class WordPracticeSubmission extends Schema.Class<WordPracticeSubmission>
   nextReviewAt: Schema.optional(Schema.DateTimeUtcFromMillis),
 }) {}
 
+export class WordPracticeState extends Schema.Class<WordPracticeState>(
+  "WordPracticeState"
+)({
+  wordText: NonEmptyString,
+  level: Schema.Number,
+  levelStartedAt: Schema.DateTimeUtcFromMillis,
+  nextReviewAt: Schema.optional(Schema.DateTimeUtcFromMillis),
+  updatedAt: Schema.DateTimeUtcFromMillis,
+}) {}
+
 export class WordPracticeBatch extends Schema.Class<WordPracticeBatch>(
   "WordPracticeBatch"
 )({

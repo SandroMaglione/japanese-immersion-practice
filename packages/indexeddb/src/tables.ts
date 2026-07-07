@@ -21,6 +21,15 @@ export class WordPracticeSubmissionsTable extends IndexedDbTable.make({
   },
 }) {}
 
+export class WordPracticeStatesTable extends IndexedDbTable.make({
+  name: "word_practice_states",
+  schema: Domain.WordPracticeState,
+  keyPath: "wordText",
+  indexes: {
+    byUpdatedAt: "updatedAt",
+  },
+}) {}
+
 export class WordPracticeBatchesTable extends IndexedDbTable.make({
   name: "word_practice_batches",
   schema: Domain.WordPracticeBatch,
