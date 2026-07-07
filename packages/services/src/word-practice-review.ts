@@ -27,37 +27,37 @@ const MillisecondsPerDay = 24 * MillisecondsPerHour;
 
 export const ReviewLevels = [
   {
-    correctSubmissionTarget: 10,
+    correctSubmissionTarget: 5,
     delayMillis: 0,
     level: 0,
   },
   {
-    correctSubmissionTarget: 10,
+    correctSubmissionTarget: 3,
     delayMillis: 15 * MillisecondsPerMinute,
     level: 1,
   },
   {
-    correctSubmissionTarget: 10,
+    correctSubmissionTarget: 3,
     delayMillis: MillisecondsPerDay,
     level: 2,
   },
   {
-    correctSubmissionTarget: 5,
+    correctSubmissionTarget: 2,
     delayMillis: 3 * MillisecondsPerDay,
     level: 3,
   },
   {
-    correctSubmissionTarget: 5,
+    correctSubmissionTarget: 2,
     delayMillis: 9 * MillisecondsPerDay,
     level: 4,
   },
   {
-    correctSubmissionTarget: 5,
+    correctSubmissionTarget: 2,
     delayMillis: 27 * MillisecondsPerDay,
     level: 5,
   },
   {
-    correctSubmissionTarget: 5,
+    correctSubmissionTarget: 1,
     delayMillis: 81 * MillisecondsPerDay,
     level: 6,
   },
@@ -135,7 +135,7 @@ export const correctProgressAtLevel = ({
   submissions.filter(
     (submission) =>
       submission.submittedAtMillis > state.levelStartedAtMillis &&
-      submission.result === "correct"
+      submission.result === "correct",
   ).length;
 
 export const isDue = ({
@@ -172,7 +172,7 @@ export const nextReviewAtMillisForWordTexts = ({
   states
     .filter((state) => wordTexts.includes(state.wordText))
     .flatMap((state) =>
-      state.nextReviewAtMillis === undefined ? [] : [state.nextReviewAtMillis]
+      state.nextReviewAtMillis === undefined ? [] : [state.nextReviewAtMillis],
     )
     .filter((nextReviewAtMillis) => nextReviewAtMillis > now)
     .sort((left, right) => left - right)[0];
@@ -236,7 +236,7 @@ export const stateFromSubmissions = ({
   readonly submissions: readonly WordPracticeReviewSubmission[];
 }) => {
   const sortedSubmissions = [...submissions].sort(
-    (left, right) => left.submittedAtMillis - right.submittedAtMillis
+    (left, right) => left.submittedAtMillis - right.submittedAtMillis,
   );
   const firstSubmission = sortedSubmissions[0];
 
