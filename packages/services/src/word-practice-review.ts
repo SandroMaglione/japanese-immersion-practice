@@ -19,6 +19,7 @@ type WordPracticeReviewLevel = {
   readonly correctSubmissionTarget: number;
   readonly delayMillis: number;
   readonly level: number;
+  readonly repairDelayMillis: number;
 };
 
 const MillisecondsPerMinute = 60 * 1000;
@@ -27,39 +28,46 @@ const MillisecondsPerDay = 24 * MillisecondsPerHour;
 
 export const ReviewLevels = [
   {
-    correctSubmissionTarget: 5,
-    delayMillis: 0,
+    correctSubmissionTarget: 4,
+    delayMillis: 5 * MillisecondsPerMinute,
     level: 0,
+    repairDelayMillis: MillisecondsPerMinute,
   },
   {
     correctSubmissionTarget: 3,
-    delayMillis: 15 * MillisecondsPerMinute,
+    delayMillis: 30 * MillisecondsPerMinute,
     level: 1,
+    repairDelayMillis: 5 * MillisecondsPerMinute,
   },
   {
-    correctSubmissionTarget: 3,
+    correctSubmissionTarget: 2,
     delayMillis: MillisecondsPerDay,
     level: 2,
+    repairDelayMillis: 15 * MillisecondsPerMinute,
   },
   {
     correctSubmissionTarget: 2,
     delayMillis: 3 * MillisecondsPerDay,
     level: 3,
+    repairDelayMillis: MillisecondsPerHour,
   },
   {
     correctSubmissionTarget: 2,
-    delayMillis: 9 * MillisecondsPerDay,
+    delayMillis: 7 * MillisecondsPerDay,
     level: 4,
+    repairDelayMillis: 4 * MillisecondsPerHour,
   },
   {
     correctSubmissionTarget: 2,
-    delayMillis: 27 * MillisecondsPerDay,
+    delayMillis: 21 * MillisecondsPerDay,
     level: 5,
+    repairDelayMillis: 12 * MillisecondsPerHour,
   },
   {
     correctSubmissionTarget: 1,
-    delayMillis: 81 * MillisecondsPerDay,
+    delayMillis: 60 * MillisecondsPerDay,
     level: 6,
+    repairDelayMillis: MillisecondsPerDay,
   },
 ] as const satisfies readonly WordPracticeReviewLevel[];
 
@@ -70,6 +78,7 @@ const FallbackReviewLevel: WordPracticeReviewLevel = {
   correctSubmissionTarget: 1,
   delayMillis: 0,
   level: 0,
+  repairDelayMillis: MillisecondsPerMinute,
 };
 
 const _clamp = ({
@@ -90,6 +99,20 @@ const _nextReviewAtMillis = ({
   readonly now: number;
 }) => (delayMillis <= 0 ? undefined : now + delayMillis);
 
+const _stateWithNextReviewAtMillis = ({
+  level,
+  levelStartedAtMillis,
+  nextReviewAtMillis,
+}: {
+  readonly level: number;
+  readonly levelStartedAtMillis: number;
+  readonly nextReviewAtMillis?: number;
+}): WordPracticeReviewState => ({
+  level,
+  levelStartedAtMillis,
+  ...(nextReviewAtMillis === undefined ? {} : { nextReviewAtMillis }),
+});
+
 export const reviewLevelRule = ({ level }: { readonly level: number }) => {
   const clampedLevel = _clamp({
     max: MaximumReviewLevel,
@@ -109,7 +132,7 @@ export const initialState = ({
   readonly now: number;
 }): WordPracticeReviewState => ({
   level: MinimumReviewLevel,
-  levelStartedAtMillis: now,
+  levelStartedAtMillis: now - 1,
 });
 
 export const normalizeState = ({
@@ -135,7 +158,7 @@ export const correctProgressAtLevel = ({
   submissions.filter(
     (submission) =>
       submission.submittedAtMillis > state.levelStartedAtMillis &&
-      submission.result === "correct",
+      submission.result === "correct"
   ).length;
 
 export const isDue = ({
@@ -172,7 +195,7 @@ export const nextReviewAtMillisForWordTexts = ({
   states
     .filter((state) => wordTexts.includes(state.wordText))
     .flatMap((state) =>
-      state.nextReviewAtMillis === undefined ? [] : [state.nextReviewAtMillis],
+      state.nextReviewAtMillis === undefined ? [] : [state.nextReviewAtMillis]
     )
     .filter((nextReviewAtMillis) => nextReviewAtMillis > now)
     .sort((left, right) => left - right)[0];
@@ -191,18 +214,25 @@ export const applyPracticeResult = ({
   const normalizedState = normalizeState({ state });
 
   if (result === "incorrect") {
-    const level = Math.max(MinimumReviewLevel, normalizedState.level - 1);
+    const sortedSubmissions = [...submissions].sort(
+      (left, right) => left.submittedAtMillis - right.submittedAtMillis
+    );
+    const latestSubmission = sortedSubmissions[sortedSubmissions.length - 1];
+    const level =
+      latestSubmission?.result === "incorrect"
+        ? Math.max(MinimumReviewLevel, normalizedState.level - 1)
+        : normalizedState.level;
     const rule = reviewLevelRule({ level });
     const nextReviewAtMillis = _nextReviewAtMillis({
-      delayMillis: rule.delayMillis,
+      delayMillis: rule.repairDelayMillis,
       now,
     });
 
-    return {
+    return _stateWithNextReviewAtMillis({
       level,
       levelStartedAtMillis: now,
-      ...(nextReviewAtMillis === undefined ? {} : { nextReviewAtMillis }),
-    };
+      nextReviewAtMillis,
+    });
   }
 
   const rule = reviewLevelRule({ level: normalizedState.level });
@@ -213,7 +243,10 @@ export const applyPracticeResult = ({
     }) + 1;
 
   if (correctProgress < rule.correctSubmissionTarget) {
-    return normalizedState;
+    return {
+      level: normalizedState.level,
+      levelStartedAtMillis: normalizedState.levelStartedAtMillis,
+    };
   }
 
   const level = Math.min(MaximumReviewLevel, normalizedState.level + 1);
@@ -223,11 +256,11 @@ export const applyPracticeResult = ({
     now,
   });
 
-  return {
+  return _stateWithNextReviewAtMillis({
     level,
     levelStartedAtMillis: now,
-    ...(nextReviewAtMillis === undefined ? {} : { nextReviewAtMillis }),
-  };
+    nextReviewAtMillis,
+  });
 };
 
 export const stateFromSubmissions = ({
@@ -236,7 +269,7 @@ export const stateFromSubmissions = ({
   readonly submissions: readonly WordPracticeReviewSubmission[];
 }) => {
   const sortedSubmissions = [...submissions].sort(
-    (left, right) => left.submittedAtMillis - right.submittedAtMillis,
+    (left, right) => left.submittedAtMillis - right.submittedAtMillis
   );
   const firstSubmission = sortedSubmissions[0];
 
