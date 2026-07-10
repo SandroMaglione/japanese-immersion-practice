@@ -39,3 +39,37 @@ export class WordPracticeBatchesTable extends IndexedDbTable.make({
     byStartedAt: "startedAt",
   },
 }) {}
+
+export class WordsTable extends IndexedDbTable.make({
+  name: "words",
+  schema: Domain.Word,
+  keyPath: "id",
+  indexes: {
+    byUpdatedAt: "updatedAt",
+  },
+}) {}
+
+export class WordMemoryStatesTable extends IndexedDbTable.make({
+  name: "word_memory_states",
+  schema: Domain.WordMemoryState,
+  keyPath: "wordId",
+  indexes: {
+    byDueAt: "dueAt",
+    byLastPracticedAt: "lastPracticedAt",
+    byPhase: "phase",
+    byPhaseAndDueAt: ["phase", "dueAt"],
+    byPhaseAndLastPracticedAt: ["phase", "lastPracticedAt"],
+    byUpdatedAt: "updatedAt",
+  },
+}) {}
+
+export class WordPracticeEventsTable extends IndexedDbTable.make({
+  name: "word_practice_events",
+  schema: Domain.WordPracticeEvent,
+  keyPath: "id",
+  indexes: {
+    byReviewedAt: "reviewedAt",
+    bySessionId: "sessionId",
+    byWordId: "wordId",
+  },
+}) {}

@@ -1,6 +1,6 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
 import { Tooltip } from "@base-ui/react/tooltip";
-import { Dumbbell, ListChecks, ListOrdered, WholeWord } from "lucide-react";
+import { Brain, Dumbbell, ListChecks, WholeWord } from "lucide-react";
 
 export const Route = createRootRoute({
   component: RootRoute,
@@ -43,7 +43,7 @@ function RootRoute() {
               render={
                 <Link
                   to="/levels"
-                  aria-label="Review levels"
+                  aria-label="Word memory"
                   activeProps={{
                     className:
                       "!bg-action !text-action-ink hover:!bg-action-hover hover:!text-action-ink",
@@ -52,12 +52,12 @@ function RootRoute() {
                 />
               }
             >
-              <ListOrdered size={18} strokeWidth={2.5} />
+              <Brain size={18} strokeWidth={2.5} />
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Positioner sideOffset={8}>
                 <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-                  Review levels
+                  Word memory
                 </Tooltip.Popup>
               </Tooltip.Positioner>
             </Tooltip.Portal>

@@ -1,4 +1,4 @@
-import { Array as EffectArray, Context, Effect, Layer } from "effect";
+import { Array as EffectArray, Context, DateTime, Effect, Layer } from "effect";
 
 import * as Database from "./database.ts";
 import * as Domain from "./domain.ts";
@@ -9,286 +9,268 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
   make: Effect.gen(function* () {
     const db = yield* Database.JapanesePracticeDatabase.getQueryBuilder;
 
+    const listDueMemoryStates = ({
+      limit,
+      now,
+      phase,
+    }: {
+      readonly limit: number;
+      readonly now: number;
+      readonly phase: "learning" | "review" | "relearning";
+    }) =>
+      db
+        .from("word_memory_states")
+        .select("byPhaseAndDueAt")
+        .between([phase], [phase, now])
+        .limit(limit);
+
+    const listFutureMemoryStates = ({
+      limit,
+      now,
+      phase,
+    }: {
+      readonly limit: number;
+      readonly now: number;
+      readonly phase: "learning" | "review" | "relearning";
+    }) =>
+      db
+        .from("word_memory_states")
+        .select("byPhaseAndDueAt")
+        .between([phase, now], [phase, []], { excludeLowerBound: true })
+        .limit(limit);
+
     return {
-      listWordEntries: Effect.fn("Store.listWordEntries")(function* () {
-        return yield* db.from("word_entries").select("byUpdatedAt").reverse();
+      listWords: Effect.fn("Store.listWords")(function* () {
+        return yield* db.from("words").select("byUpdatedAt").reverse();
       }),
 
-      insertWordEntry: Effect.fn("Store.insertWordEntry")(function* (
-        wordEntry: Domain.WordEntry
+      getWord: Effect.fn("Store.getWord")(function* (
+        wordId: Domain.Word["id"]
       ) {
-        yield* db.from("word_entries").insert(wordEntry);
+        const words = yield* db.from("words").select().equals(wordId);
+
+        return words[0];
       }),
 
-      insertWordEntries: Effect.fn("Store.insertWordEntries")(function* (
-        wordEntries: readonly Domain.WordEntry[]
-      ) {
-        yield* db.from("word_entries").insertAll([...wordEntries]);
-      }),
-
-      updateWordEntry: Effect.fn("Store.updateWordEntry")(function* ({
-        originalText,
-        wordEntry,
-      }: {
-        readonly originalText: Domain.WordEntry["text"];
-        readonly wordEntry: Domain.WordEntry;
-      }) {
-        if (originalText === wordEntry.text) {
-          yield* db.from("word_entries").upsert(wordEntry);
-          return;
-        }
-
-        yield* db.withTransaction({
-          tables: [
-            "word_entries",
-            "word_practice_batches",
-            "word_practice_states",
-            "word_practice_submissions",
-          ],
-          mode: "readwrite",
-        })(
-          Effect.gen(function* () {
-            const submissions = yield* db
-              .from("word_practice_submissions")
-              .select("byWordText")
-              .equals(originalText);
-            const batches = yield* db
-              .from("word_practice_batches")
-              .select("byStartedAt");
-            const states = yield* db
-              .from("word_practice_states")
-              .select()
-              .equals(originalText);
-            const updatedSubmissions = submissions.map((submission) => ({
-              ...submission,
-              wordText: wordEntry.text,
-            }));
-            const updatedStates = states.map((state) => ({
-              ...state,
-              wordText: wordEntry.text,
-            }));
-            const updatedBatches = batches
-              .filter((batch) => batch.wordOrder.includes(originalText))
-              .map((batch) => ({
-                ...batch,
-                wordOrder: batch.wordOrder.map((wordText) =>
-                  wordText === originalText ? wordEntry.text : wordText
-                ),
-              }));
-
-            yield* db.from("word_entries").delete().equals(originalText);
-            yield* db.from("word_entries").insert(wordEntry);
-            yield* db
-              .from("word_practice_submissions")
-              .upsertAll(updatedSubmissions);
-            yield* db
-              .from("word_practice_states")
-              .delete()
-              .equals(originalText);
-            yield* db.from("word_practice_states").upsertAll(updatedStates);
-            yield* db.from("word_practice_batches").upsertAll(updatedBatches);
-          })
-        );
-      }),
-
-      deleteWordEntry: Effect.fn("Store.deleteWordEntry")(function* (
-        text: Domain.WordEntry["text"]
-      ) {
-        yield* db.withTransaction({
-          tables: [
-            "word_entries",
-            "word_practice_batches",
-            "word_practice_states",
-            "word_practice_submissions",
-          ],
-          mode: "readwrite",
-        })(
-          Effect.gen(function* () {
-            const submissions = yield* db
-              .from("word_practice_submissions")
-              .select("byWordText")
-              .equals(text);
-            const batches = yield* db
-              .from("word_practice_batches")
-              .select("byStartedAt");
-            const updatedBatches = batches
-              .filter((batch) => batch.wordOrder.includes(text))
-              .map((batch) => ({
-                ...batch,
-                wordOrder: batch.wordOrder.filter(
-                  (wordText) => wordText !== text
-                ),
-              }));
-
-            yield* Effect.all([
-              db.from("word_entries").delete().equals(text),
-              db.from("word_practice_states").delete().equals(text),
-              Effect.all(
-                submissions.map((submission) =>
-                  db
-                    .from("word_practice_submissions")
-                    .delete()
-                    .equals(submission.id)
-                )
-              ),
-              db.from("word_practice_batches").upsertAll(updatedBatches),
-            ]);
-          })
-        );
-      }),
-
-      deleteAllWordEntries: Effect.fn("Store.deleteAllWordEntries")(
-        function* () {
+      insertWordWithMemoryState: Effect.fn("Store.insertWordWithMemoryState")(
+        function* ({
+          state,
+          word,
+        }: {
+          readonly state: Domain.WordMemoryState;
+          readonly word: Domain.Word;
+        }) {
           yield* db.withTransaction({
-            tables: [
-              "word_entries",
-              "word_practice_batches",
-              "word_practice_states",
-              "word_practice_submissions",
-            ],
+            tables: ["words", "word_memory_states"],
             mode: "readwrite",
           })(
             Effect.all([
-              db.from("word_entries").clear,
-              db.from("word_practice_batches").clear,
-              db.from("word_practice_states").clear,
-              db.from("word_practice_submissions").clear,
+              db.from("words").insert(word),
+              db.from("word_memory_states").insert(state),
             ])
           );
         }
       ),
 
-      insertWordPracticeSubmission: Effect.fn(
-        "Store.insertWordPracticeSubmission"
-      )(function* (submission: Domain.WordPracticeSubmission) {
-        yield* db.from("word_practice_submissions").insert(submission);
-      }),
-
-      saveWordPracticeSubmissionAndBatches: Effect.fn(
-        "Store.saveWordPracticeSubmissionAndBatches"
+      insertWordsWithMemoryStates: Effect.fn(
+        "Store.insertWordsWithMemoryStates"
       )(function* ({
-        batches,
-        submission,
+        states,
+        words,
       }: {
-        readonly batches: readonly Domain.WordPracticeBatch[];
-        readonly submission: Domain.WordPracticeSubmission;
+        readonly states: readonly Domain.WordMemoryState[];
+        readonly words: readonly Domain.Word[];
       }) {
+        if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
+          return;
+        }
+
         yield* db.withTransaction({
-          tables: ["word_practice_batches", "word_practice_submissions"],
+          tables: ["words", "word_memory_states"],
           mode: "readwrite",
         })(
-          Effect.gen(function* () {
-            yield* db.from("word_practice_submissions").insert(submission);
-
-            if (!EffectArray.isReadonlyArrayNonEmpty(batches)) {
-              return;
-            }
-
-            yield* db.from("word_practice_batches").upsertAll([...batches]);
-          })
+          Effect.all([
+            db.from("words").insertAll([...words]),
+            db.from("word_memory_states").insertAll([...states]),
+          ])
         );
       }),
 
-      saveWordPracticeSubmissionStateAndBatches: Effect.fn(
-        "Store.saveWordPracticeSubmissionStateAndBatches"
-      )(function* ({
-        batches,
-        state,
-        submission,
-      }: {
-        readonly batches: readonly Domain.WordPracticeBatch[];
-        readonly state: Domain.WordPracticeState;
-        readonly submission: Domain.WordPracticeSubmission;
-      }) {
+      updateWord: Effect.fn("Store.updateWord")(function* (word: Domain.Word) {
+        yield* db.from("words").upsert(word);
+      }),
+
+      deleteWord: Effect.fn("Store.deleteWord")(function* (
+        wordId: Domain.Word["id"]
+      ) {
         yield* db.withTransaction({
-          tables: [
-            "word_practice_batches",
-            "word_practice_states",
-            "word_practice_submissions",
-          ],
+          tables: ["words", "word_memory_states", "word_practice_events"],
           mode: "readwrite",
         })(
-          Effect.gen(function* () {
-            yield* db.from("word_practice_submissions").insert(submission);
-            yield* db.from("word_practice_states").upsert(state);
-
-            if (!EffectArray.isReadonlyArrayNonEmpty(batches)) {
-              return;
-            }
-
-            yield* db.from("word_practice_batches").upsertAll([...batches]);
-          })
+          Effect.all([
+            db.from("words").delete().equals(wordId),
+            db.from("word_memory_states").delete().equals(wordId),
+            db.from("word_practice_events").delete("byWordId").equals(wordId),
+          ])
         );
       }),
 
-      listWordPracticeSubmissions: Effect.fn(
-        "Store.listWordPracticeSubmissions"
-      )(function* () {
+      deleteAllWords: Effect.fn("Store.deleteAllWords")(function* () {
+        yield* db.withTransaction({
+          tables: ["words", "word_memory_states", "word_practice_events"],
+          mode: "readwrite",
+        })(
+          Effect.all([
+            db.from("words").clear,
+            db.from("word_memory_states").clear,
+            db.from("word_practice_events").clear,
+          ])
+        );
+      }),
+
+      listMemoryStates: Effect.fn("Store.listMemoryStates")(function* () {
         return yield* db
-          .from("word_practice_submissions")
-          .select("bySubmittedAt")
+          .from("word_memory_states")
+          .select("byUpdatedAt")
           .reverse();
       }),
 
-      listWordPracticeSubmissionsByWord: Effect.fn(
-        "Store.listWordPracticeSubmissionsByWord"
-      )(function* (wordText: Domain.WordPracticeSubmission["wordText"]) {
-        return yield* db
-          .from("word_practice_submissions")
-          .select("byWordText")
-          .equals(wordText);
-      }),
-
-      listWordPracticeStates: Effect.fn("Store.listWordPracticeStates")(
-        function* () {
-          return yield* db
-            .from("word_practice_states")
-            .select("byUpdatedAt")
-            .reverse();
-        }
-      ),
-
-      getWordPracticeState: Effect.fn("Store.getWordPracticeState")(function* (
-        wordText: Domain.WordPracticeState["wordText"]
+      getMemoryState: Effect.fn("Store.getMemoryState")(function* (
+        wordId: Domain.WordMemoryState["wordId"]
       ) {
         const states = yield* db
-          .from("word_practice_states")
+          .from("word_memory_states")
           .select()
-          .equals(wordText);
+          .equals(wordId);
 
         return states[0];
       }),
 
-      upsertWordPracticeState: Effect.fn("Store.upsertWordPracticeState")(
-        function* (state: Domain.WordPracticeState) {
-          yield* db.from("word_practice_states").upsert(state);
+      loadWordSelectionPool: Effect.fn("Store.loadWordSelectionPool")(
+        function* ({
+          limit,
+          now,
+        }: {
+          readonly limit: number;
+          readonly now: number;
+        }) {
+          const [
+            dueLearning,
+            dueRelearning,
+            dueReview,
+            futureLearning,
+            futureRelearning,
+            futureReview,
+            oldestPracticedReview,
+            newWords,
+            learningCount,
+            relearningCount,
+            dueReviewCount,
+          ] = yield* Effect.all([
+            listDueMemoryStates({ limit, now, phase: "learning" }),
+            listDueMemoryStates({ limit, now, phase: "relearning" }),
+            listDueMemoryStates({ limit, now, phase: "review" }),
+            listFutureMemoryStates({ limit, now, phase: "learning" }),
+            listFutureMemoryStates({ limit, now, phase: "relearning" }),
+            listFutureMemoryStates({ limit, now, phase: "review" }),
+            db
+              .from("word_memory_states")
+              .select("byPhaseAndLastPracticedAt")
+              .between(["review"], ["review", []])
+              .limit(limit),
+            db
+              .from("word_memory_states")
+              .select("byPhase")
+              .equals("new")
+              .limit(limit),
+            db.from("word_memory_states").count("byPhase").equals("learning"),
+            db.from("word_memory_states").count("byPhase").equals("relearning"),
+            db
+              .from("word_memory_states")
+              .count("byPhaseAndDueAt")
+              .between(["review"], ["review", now]),
+          ]);
+          const extra = [...futureReview, ...oldestPracticedReview].filter(
+            (state, index, states) =>
+              states.findIndex(
+                (candidate) => candidate.wordId === state.wordId
+              ) === index
+          );
+
+          return {
+            activeLearningCount: learningCount + relearningCount,
+            dueLearning: [...dueLearning, ...dueRelearning].sort(
+              (left, right) =>
+                DateTime.toEpochMillis(left.dueAt) -
+                DateTime.toEpochMillis(right.dueAt)
+            ),
+            dueReview,
+            dueReviewCount,
+            earlyLearning: [...futureLearning, ...futureRelearning]
+              .sort(
+                (left, right) =>
+                  DateTime.toEpochMillis(left.dueAt) -
+                  DateTime.toEpochMillis(right.dueAt)
+              )
+              .slice(0, limit),
+            extra,
+            newWords,
+          };
         }
       ),
 
-      upsertWordPracticeStates: Effect.fn("Store.upsertWordPracticeStates")(
-        function* (states: readonly Domain.WordPracticeState[]) {
-          yield* db.from("word_practice_states").upsertAll([...states]);
+      savePracticeResult: Effect.fn("Store.savePracticeResult")(function* ({
+        event,
+        state,
+      }: {
+        readonly event: Domain.WordPracticeEvent;
+        readonly state: Domain.WordMemoryState;
+      }) {
+        yield* db.withTransaction({
+          tables: ["word_memory_states", "word_practice_events"],
+          mode: "readwrite",
+        })(
+          Effect.all([
+            db.from("word_memory_states").upsert(state),
+            db.from("word_practice_events").insert(event),
+          ])
+        );
+      }),
+
+      listPracticeEvents: Effect.fn("Store.listPracticeEvents")(function* () {
+        return yield* db
+          .from("word_practice_events")
+          .select("byReviewedAt")
+          .reverse();
+      }),
+
+      listPracticeEventsByWord: Effect.fn("Store.listPracticeEventsByWord")(
+        function* (wordId: Domain.WordPracticeEvent["wordId"]) {
+          const events = yield* db
+            .from("word_practice_events")
+            .select("byWordId")
+            .equals(wordId);
+
+          return events.sort(
+            (left, right) =>
+              DateTime.toEpochMillis(right.reviewedAt) -
+              DateTime.toEpochMillis(left.reviewedAt)
+          );
         }
       ),
 
-      listWordPracticeBatches: Effect.fn("Store.listWordPracticeBatches")(
-        function* () {
+      countPracticeEventsBetween: Effect.fn("Store.countPracticeEventsBetween")(
+        function* ({
+          end,
+          start,
+        }: {
+          readonly end: number;
+          readonly start: number;
+        }) {
           return yield* db
-            .from("word_practice_batches")
-            .select("byStartedAt")
-            .reverse();
-        }
-      ),
-
-      insertWordPracticeBatch: Effect.fn("Store.insertWordPracticeBatch")(
-        function* (batch: Domain.WordPracticeBatch) {
-          yield* db.from("word_practice_batches").insert(batch);
-        }
-      ),
-
-      upsertWordPracticeBatch: Effect.fn("Store.upsertWordPracticeBatch")(
-        function* (batch: Domain.WordPracticeBatch) {
-          yield* db.from("word_practice_batches").upsert(batch);
+            .from("word_practice_events")
+            .count("byReviewedAt")
+            .between(start, end, { excludeUpperBound: true });
         }
       ),
     };

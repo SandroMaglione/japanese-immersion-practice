@@ -1,42 +1,76 @@
 import { Button } from "@base-ui/react/button";
 import { Tabs } from "@base-ui/react/tabs";
-import { WordPracticeLevelsMachine } from "@jip/machines";
+import { WordMemoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
-import { Array as EffectArray, DateTime } from "effect";
-import { RefreshCw } from "lucide-react";
+import { Array as EffectArray } from "effect";
+import {
+  AlarmClock,
+  CalendarClock,
+  RefreshCw,
+  RotateCcw,
+  Sparkles,
+  Sprout,
+} from "lucide-react";
+import { useState } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
-const wordPracticeLevelsMachine =
-  WordPracticeLevelsMachine.makeWordPracticeLevelsMachine({
-    runtime: RuntimeClient,
-  });
-
-const MillisecondsPerMinute = 60 * 1000;
-const MillisecondsPerHour = 60 * MillisecondsPerMinute;
-const MillisecondsPerDay = 24 * MillisecondsPerHour;
-
-type WordPracticeLevelsActor = Actor<typeof wordPracticeLevelsMachine>;
-type WordPracticeLevel = ReturnType<
-  WordPracticeLevelsActor["getSnapshot"]
->["context"]["levels"][number];
-
-export const Route = createFileRoute("/levels")({
-  component: WordPracticeLevelsRoute,
+const wordMemoryMachine = WordMemoryMachine.makeWordMemoryMachine({
+  runtime: RuntimeClient,
 });
 
-function WordPracticeLevelsRoute() {
-  const [snapshot, , actor] = useMachine(wordPracticeLevelsMachine);
+type WordMemoryActor = Actor<typeof wordMemoryMachine>;
+type WordMemoryGroup = ReturnType<
+  WordMemoryActor["getSnapshot"]
+>["context"]["groups"][number];
+
+const StatusLabels = {
+  due: "Due",
+  learning: "Learning",
+  new: "New",
+  relearning: "Relearning",
+  scheduled: "Scheduled",
+} as const;
+
+const StatusPresentation = {
+  due: {
+    activeClassName: "border-gold/55 bg-gold-soft text-gold",
+    Icon: AlarmClock,
+  },
+  learning: {
+    activeClassName: "border-teal/50 bg-teal-soft text-teal",
+    Icon: Sprout,
+  },
+  new: {
+    activeClassName: "border-sky/45 bg-sky/10 text-sky",
+    Icon: Sparkles,
+  },
+  relearning: {
+    activeClassName: "border-accent/50 bg-accent-soft text-accent",
+    Icon: RotateCcw,
+  },
+  scheduled: {
+    activeClassName: "border-line bg-field text-ink",
+    Icon: CalendarClock,
+  },
+} as const;
+
+export const Route = createFileRoute("/levels")({
+  component: WordMemoryRoute,
+});
+
+function WordMemoryRoute() {
+  const [snapshot, , actor] = useMachine(wordMemoryMachine);
 
   return (
     <div className="flex min-w-0 flex-col gap-6">
       {snapshot.matches("Loading") ? (
         <div className="py-10 text-center text-sm font-bold text-ink-muted">
-          Loading review levels
+          Loading word memory
         </div>
       ) : null}
       {snapshot.matches("Failure") ? (
@@ -54,134 +88,145 @@ function WordPracticeLevelsRoute() {
           </Button>
         </div>
       ) : null}
-      {snapshot.matches("Ready") ? (
-        <WordPracticeLevelsTabs actor={actor} />
-      ) : null}
+      {snapshot.matches("Ready") ? <WordMemoryTabs actor={actor} /> : null}
     </div>
   );
 }
 
-function WordPracticeLevelsTabs({
-  actor,
-}: {
-  readonly actor: WordPracticeLevelsActor;
-}) {
-  const levels = useSelector(actor, (snapshot) => snapshot.context.levels);
-  const selectedLevel = useSelector(
+function WordMemoryTabs({ actor }: { readonly actor: WordMemoryActor }) {
+  const groups = useSelector(actor, (snapshot) => snapshot.context.groups);
+  const selectedStatus = useSelector(
     actor,
-    (snapshot) => snapshot.context.selectedLevel
+    (snapshot) => snapshot.context.selectedStatus
   );
 
   return (
     <Tabs.Root
       className="flex min-w-0 flex-col gap-4"
-      value={`${selectedLevel}`}
+      value={selectedStatus}
       onValueChange={(value) => {
-        const level = Number(value);
+        const group = groups.find((candidate) => candidate.status === value);
 
-        if (!levels.some((levelGroup) => levelGroup.level === level)) {
-          return;
+        if (group !== undefined) {
+          actor.trigger.selectStatus({ status: group.status });
         }
-
-        actor.trigger.selectLevel({ level });
       }}
     >
       <Tabs.List
-        aria-label="Review levels"
-        className="review-level-tabs flex w-full min-w-0 overflow-x-auto rounded-md border border-line bg-panel p-1"
+        aria-label="Word memory status"
+        className="memory-status-tabs flex w-full min-w-0 snap-x snap-mandatory scroll-px-1 gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-5"
       >
-        {levels.map((level) => (
-          <Tabs.Tab
-            key={level.level}
-            value={`${level.level}`}
-            className={({ active }: { readonly active: boolean }) =>
-              `inline-flex h-12 min-w-20 shrink-0 flex-col items-center justify-center gap-1 whitespace-nowrap rounded-md px-3 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:min-w-0 sm:flex-1 sm:basis-0 ${
-                active
-                  ? "bg-action text-action-ink hover:bg-action-hover"
-                  : "text-ink-muted hover:bg-field hover:text-ink"
-              }`
-            }
-          >
-            <span>Lv {level.level}</span>
-            <span className="text-[0.7rem] leading-none opacity-75">
-              {level.words.length}
-            </span>
-          </Tabs.Tab>
-        ))}
+        {groups.map((group) => {
+          const presentation = StatusPresentation[group.status];
+          const StatusIcon = presentation.Icon;
+
+          return (
+            <Tabs.Tab
+              key={group.status}
+              value={group.status}
+              aria-label={`${StatusLabels[group.status]}, ${group.words.length} words`}
+              className={({ active }: { readonly active: boolean }) =>
+                `grid h-[5.25rem] min-w-[6.75rem] shrink-0 snap-start scroll-mx-8 grid-cols-[auto_minmax(0,1fr)] grid-rows-[1fr_auto] items-center gap-x-2 rounded-xl border p-3 text-left shadow-[0_10px_28px_rgba(0,0,0,0.14)] transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:min-w-0 ${active ? presentation.activeClassName : "border-line/80 bg-panel text-ink-muted hover:border-ink-muted/50 hover:bg-field hover:text-ink"}`
+              }
+            >
+              <StatusIcon
+                aria-hidden="true"
+                className="row-span-2 self-center"
+                size={20}
+                strokeWidth={2.25}
+              />
+              <strong className="justify-self-end text-2xl font-black tabular-nums leading-none">
+                {group.words.length}
+              </strong>
+              <span className="justify-self-end text-[0.65rem] font-black uppercase tracking-[0.12em] opacity-80">
+                {StatusLabels[group.status]}
+              </span>
+            </Tabs.Tab>
+          );
+        })}
       </Tabs.List>
-      {levels.map((level) => (
-        <Tabs.Panel key={level.level} value={`${level.level}`}>
-          <WordPracticeLevelPanel level={level} />
+      {groups.map((group) => (
+        <Tabs.Panel key={group.status} value={group.status}>
+          <WordMemoryPanel group={group} />
         </Tabs.Panel>
       ))}
     </Tabs.Root>
   );
 }
 
-function WordPracticeLevelPanel({
-  level,
-}: {
-  readonly level: WordPracticeLevel;
-}) {
-  if (!EffectArray.isReadonlyArrayNonEmpty(level.words)) {
+function WordMemoryPanel({ group }: { readonly group: WordMemoryGroup }) {
+  const [visibleWordCount, setVisibleWordCount] = useState(100);
+
+  if (!EffectArray.isReadonlyArrayNonEmpty(group.words)) {
     return (
       <div className="py-14 text-center">
-        <div className="text-lg font-black">No words at this level</div>
+        <div className="text-lg font-black">
+          No {StatusLabels[group.status].toLocaleLowerCase()} words
+        </div>
         <div className="mt-2 text-sm font-semibold text-ink-muted">
-          Level {level.level} needs {level.correctSubmissionTarget} correct
-          answers to advance.
+          Memory status updates continuously as you practice.
         </div>
       </div>
     );
   }
 
+  const visibleWords = group.words.slice(0, visibleWordCount);
+
   return (
-    <section className="divide-y divide-line">
-      {level.words.map((word) => (
-        <WordPracticeLevelRow key={word.word.text} word={word} />
-      ))}
-    </section>
+    <div>
+      <section className="divide-y divide-line">
+        {visibleWords.map((word) => (
+          <WordMemoryRow key={word.word.id} word={word} />
+        ))}
+      </section>
+      {visibleWords.length < group.words.length ? (
+        <div className="flex justify-center py-6">
+          <Button
+            type="button"
+            className="h-10 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+            onClick={() => {
+              setVisibleWordCount((count) => count + 100);
+            }}
+          >
+            Load more
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function WordPracticeLevelRow({
+function WordMemoryRow({
   word,
 }: {
-  readonly word: WordPracticeLevel["words"][number];
+  readonly word: WordMemoryGroup["words"][number];
 }) {
-  const isPaused = word.nextReviewAt !== undefined && !word.isDue;
-  const remainingMillis =
-    word.nextReviewAt === undefined
-      ? undefined
-      : DateTime.toEpochMillis(word.nextReviewAt) - Date.now();
-  const remainingDuration =
-    remainingMillis === undefined
-      ? undefined
-      : remainingMillis <= 0
-        ? "now"
-        : remainingMillis < MillisecondsPerMinute
-          ? "<1m left"
-          : remainingMillis < MillisecondsPerHour
-            ? `${Math.ceil(remainingMillis / MillisecondsPerMinute)}m left`
-            : remainingMillis < MillisecondsPerDay
-              ? `${Math.ceil(remainingMillis / MillisecondsPerHour)}h left`
-              : `${Math.ceil(remainingMillis / MillisecondsPerDay)}d left`;
+  const dueLabel = word.isDue
+    ? "Due now"
+    : `Next ${formatDateTime({ dateTime: word.state.dueAt })}`;
+  const retention = Math.round(word.retrievability * 100);
+  const stability =
+    word.state.stability < 1
+      ? `${Math.max(1, Math.round(word.state.stability * 24))}h stability`
+      : `${Math.round(word.state.stability)}d stability`;
 
   return (
     <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-4 sm:items-center sm:gap-4">
-      <span className="min-w-0 wrap-break-word text-xl font-black leading-tight">
-        <WordText text={word.word.text} />
-      </span>
+      <div className="min-w-0">
+        <span className="wrap-break-word text-xl font-black leading-tight">
+          <WordText text={word.word.text} />
+        </span>
+        <p className="mt-1 text-xs font-bold text-ink-muted">
+          {word.state.attemptCount} attempts · {word.state.lapses} lapses
+        </p>
+      </div>
       <div className="min-w-0 justify-self-end text-right">
         <p className="whitespace-nowrap text-sm font-black text-ink">
-          {word.reviewProgress} / {word.reviewProgressTarget}
+          {retention}% recall
         </p>
-        {isPaused ? (
-          <p className="mt-1 max-w-[44vw] wrap-break-word text-xs font-bold leading-5 text-ink-muted sm:max-w-64">
-            Next {formatDateTime({ dateTime: word.nextReviewAt })} ·{" "}
-            {remainingDuration}
-          </p>
-        ) : null}
+        <p className="mt-1 max-w-[48vw] wrap-break-word text-xs font-bold leading-5 text-ink-muted sm:max-w-72">
+          {dueLabel} · {stability}
+        </p>
       </div>
     </article>
   );

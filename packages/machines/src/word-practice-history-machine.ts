@@ -1,44 +1,47 @@
 import { IndexedDb } from "@jip/indexeddb";
+import { FuriganaText, WordMemoryScheduler } from "@jip/services";
 import {
-  FuriganaText,
-  WordPracticeReview,
-  WordPracticeSelection,
-} from "@jip/services";
-import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
+  Array as EffectArray,
+  DateTime,
+  Effect,
+  HashMap,
+  Option,
+  Predicate,
+  Schema,
+} from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
 import type { MachineRuntime } from "./runtime.ts";
 
-const WordPracticeAttemptViewSchema = Schema.Struct({
-  batch: Schema.optionalKey(IndexedDb.Domain.WordPracticeBatch),
-  result: IndexedDb.Domain.WordPracticeResult,
-  submission: IndexedDb.Domain.WordPracticeSubmission,
-});
+const WordHistoryStatusSchema = Schema.Literals([
+  "new",
+  "learning",
+  "relearning",
+  "due",
+  "scheduled",
+]);
 
 const WordPracticeHistorySummarySchema = Schema.Struct({
   accuracy: Schema.Number,
   attemptCount: Schema.Number,
-  attempts: Schema.Array(WordPracticeAttemptViewSchema),
   correctCount: Schema.Number,
-  correctStreak: Schema.Number,
   incorrectCount: Schema.Number,
-  incorrectStreak: Schema.Number,
   isDue: Schema.Boolean,
-  lastSubmittedAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  reviewLevel: Schema.Number,
-  reviewProgress: Schema.Number,
-  reviewProgressTarget: Schema.Number,
-  selectionWeight: Schema.Number,
-  word: IndexedDb.Domain.WordEntry,
+  retrievability: Schema.Number,
+  state: IndexedDb.Domain.WordMemoryState,
+  status: WordHistoryStatusSchema,
+  word: IndexedDb.Domain.Word,
 });
 
 const WordPracticeHistoryContextSchema = Schema.Struct({
   matchingSummaries: Schema.Array(WordPracticeHistorySummarySchema),
   message: Schema.optionalKey(Schema.String),
   query: Schema.String,
+  selectedAttempts: Schema.Array(IndexedDb.Domain.WordPracticeEvent),
+  selectedWordId: Schema.optionalKey(IndexedDb.Domain.WordId),
   summaries: Schema.Array(WordPracticeHistorySummarySchema),
   todayAttemptCount: Schema.Number,
+  visibleSummaryCount: Schema.Number,
 });
 
 const WordPracticeHistoryDataSchema = Schema.Struct({
@@ -46,39 +49,43 @@ const WordPracticeHistoryDataSchema = Schema.Struct({
   todayAttemptCount: Schema.Number,
 });
 
-const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
-  DateTime.toEpochMillis(dateTime);
+const WordAttemptsDataSchema = Schema.Struct({
+  attempts: Schema.Array(IndexedDb.Domain.WordPracticeEvent),
+  wordId: IndexedDb.Domain.WordId,
+});
 
-const _submissionResult = ({
-  submission,
+const _errorMessage = ({
+  error,
+  fallback,
 }: {
-  readonly submission: typeof IndexedDb.Domain.WordPracticeSubmission.Type;
-}): IndexedDb.Domain.WordPracticeResult =>
-  submission.result ??
-  (FuriganaText.normalizePlainText({
-    text: submission.submittedText,
-  }) ===
-  FuriganaText.normalizePlainText({
-    text: submission.wordText,
-  })
-    ? "correct"
-    : "incorrect");
+  readonly error: unknown;
+  readonly fallback: string;
+}) => {
+  const messages: string[] = [];
+  let current = error;
 
-const _wordPracticeReviewSubmissions = ({
-  submissions,
-  wordText,
-}: {
-  readonly submissions: readonly (typeof IndexedDb.Domain.WordPracticeSubmission.Type)[];
-  readonly wordText: string;
-}) =>
-  submissions
-    .filter((submission) => submission.wordText === wordText)
-    .map((submission) => ({
-      result: _submissionResult({ submission }),
-      submittedAtMillis: _toEpochMillis({
-        dateTime: submission.submittedAt,
-      }),
-    }));
+  while (current instanceof Error && messages.length < 4) {
+    messages.push(current.message);
+    current = current.cause;
+  }
+
+  if (
+    current instanceof Event &&
+    current.target !== null &&
+    Predicate.hasProperty(current.target, "error") &&
+    current.target.error instanceof Error
+  ) {
+    messages.push(current.target.error.message);
+  }
+
+  const distinctMessages = messages.filter(
+    (message, index) => messages.indexOf(message) === index
+  );
+
+  return EffectArray.isReadonlyArrayNonEmpty(distinctMessages)
+    ? distinctMessages.join(": ")
+    : fallback;
+};
 
 const _filterSummaries = ({
   query,
@@ -99,11 +106,9 @@ const _filterSummaries = ({
       FuriganaText.toPlainText({ text: summary.word.text }),
       summary.word.translation,
       summary.word.description,
+      summary.status,
       `${summary.accuracy}`,
-      `level ${summary.reviewLevel}`,
-      summary.isDue ? "due" : "paused",
-      ...summary.attempts.map((attempt) => attempt.result),
-      ...summary.attempts.map((attempt) => attempt.submission.submittedText),
+      `${summary.attemptCount}`,
     ]
       .filter((value): value is string => value !== undefined)
       .join(" ")
@@ -123,14 +128,43 @@ export const makeWordPracticeHistoryMachine = ({
       context: Schema.toStandardSchemaV1(WordPracticeHistoryContextSchema),
       events: {
         changeQuery: Schema.toStandardSchemaV1(
-          Schema.Struct({
-            query: Schema.String,
-          })
+          Schema.Struct({ query: Schema.String })
         ),
+        closeWord: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        loadMore: Schema.toStandardSchemaV1(Schema.Void),
+        selectWord: Schema.toStandardSchemaV1(
+          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
+        ),
       },
     },
     actorSources: {
+      loadWordAttempts: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(
+            Schema.UndefinedOr(IndexedDb.Domain.WordId)
+          ),
+          output: Schema.toStandardSchemaV1(WordAttemptsDataSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (input === undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not find that word.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const attempts = yield* store.listPracticeEventsByWord(input);
+
+              return {
+                attempts,
+                wordId: input,
+              };
+            })
+          ),
+      }),
       loadWordPracticeHistory: createAsyncLogic({
         schemas: {
           output: Schema.toStandardSchemaV1(WordPracticeHistoryDataSchema),
@@ -139,225 +173,107 @@ export const makeWordPracticeHistoryMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const store = yield* IndexedDb.Store.Store;
-              const batches = yield* store.listWordPracticeBatches();
-              const submissions = yield* store.listWordPracticeSubmissions();
-              const words = yield* store.listWordEntries();
+              const [words, states] = yield* Effect.all([
+                store.listWords(),
+                store.listMemoryStates(),
+              ]);
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const storedStates = yield* store.listWordPracticeStates();
-              const persistedStates = storedStates.map((state) => {
-                const nextReviewAtMillis =
-                  state.nextReviewAt === undefined
-                    ? undefined
-                    : _toEpochMillis({ dateTime: state.nextReviewAt });
-
-                return {
-                  level: state.level,
-                  levelStartedAtMillis: _toEpochMillis({
-                    dateTime: state.levelStartedAt,
-                  }),
-                  ...(nextReviewAtMillis === undefined
-                    ? {}
-                    : { nextReviewAtMillis }),
-                  wordText: state.wordText,
-                };
-              });
-              const derivedStates = words.flatMap((word) => {
-                const persistedState = persistedStates.find(
-                  (state) => state.wordText === word.text
-                );
-
-                if (persistedState !== undefined) {
-                  return [];
-                }
-
-                const wordSubmissions = _wordPracticeReviewSubmissions({
-                  submissions,
-                  wordText: word.text,
-                });
-
-                if (!EffectArray.isReadonlyArrayNonEmpty(wordSubmissions)) {
-                  return [];
-                }
-
-                return [
-                  {
-                    ...WordPracticeReview.stateFromSubmissions({
-                      submissions: wordSubmissions,
-                    }),
-                    wordText: word.text,
-                  },
-                ];
-              });
-              const states = [...persistedStates, ...derivedStates];
               const today = new Date(now);
-              const todayAttemptCount = submissions.filter((submission) => {
-                const submittedAt = new Date(
-                  _toEpochMillis({
-                    dateTime: submission.submittedAt,
-                  })
-                );
-
-                return (
-                  today.getFullYear() === submittedAt.getFullYear() &&
-                  today.getMonth() === submittedAt.getMonth() &&
-                  today.getDate() === submittedAt.getDate()
-                );
-              }).length;
-              const selectionCandidates =
-                WordPracticeSelection.buildSelectionCandidates({
-                  batches: batches.map((batch) => ({
-                    batchNumber: batch.batchNumber,
-                    startedAtMillis: _toEpochMillis({
-                      dateTime: batch.startedAt,
-                    }),
-                    wordOrder: batch.wordOrder,
-                  })),
-                  now,
-                  submissions: submissions.map((submission) => ({
-                    result: _submissionResult({ submission }),
-                    submittedAtMillis: _toEpochMillis({
-                      dateTime: submission.submittedAt,
-                    }),
-                    wordText: submission.wordText,
-                  })),
-                  words: words.map((word) => {
-                    const state = WordPracticeReview.reviewStateForWord({
-                      now,
-                      states,
-                      wordText: word.text,
-                    });
-
-                    return {
-                      ...(state.nextReviewAtMillis === undefined
-                        ? {}
-                        : { nextReviewAtMillis: state.nextReviewAtMillis }),
-                      text: word.text,
-                    };
-                  }),
-                });
-              const summaries = words.map((word) => {
-                const attempts = submissions
-                  .filter((submission) => submission.wordText === word.text)
-                  .sort(
-                    (left, right) =>
-                      _toEpochMillis({ dateTime: right.submittedAt }) -
-                      _toEpochMillis({ dateTime: left.submittedAt })
-                  )
-                  .map((submission) => {
-                    const batch =
-                      submission.batchId === undefined
-                        ? undefined
-                        : batches.find(
-                            (practiceBatch) =>
-                              practiceBatch.id === submission.batchId
-                          );
-                    const result = _submissionResult({ submission });
-
-                    return {
-                      ...(batch === undefined ? {} : { batch }),
-                      result,
-                      submission,
-                    };
-                  });
-                const latestAttempt = attempts[0];
-                const correctCount = attempts.filter(
-                  (attempt) => attempt.result === "correct"
-                ).length;
-                let correctStreak = 0;
-
-                for (const attempt of attempts) {
-                  if (attempt.result !== "correct") {
-                    break;
-                  }
-
-                  correctStreak += 1;
+              const startOfToday = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate()
+              ).getTime();
+              const startOfTomorrow = new Date(
+                today.getFullYear(),
+                today.getMonth(),
+                today.getDate() + 1
+              ).getTime();
+              const todayAttemptCount = yield* store.countPracticeEventsBetween(
+                {
+                  end: startOfTomorrow,
+                  start: startOfToday,
                 }
+              );
+              const stateByWordId = HashMap.fromIterable(
+                states.map((state) => [state.wordId, state] as const)
+              );
+              const summaries: (typeof WordPracticeHistorySummarySchema.Type)[] =
+                words.flatMap((word) => {
+                  const state = Option.getOrUndefined(
+                    HashMap.get(stateByWordId, word.id)
+                  );
 
-                let incorrectStreak = 0;
-
-                for (const attempt of attempts) {
-                  if (attempt.result !== "incorrect") {
-                    break;
+                  if (state === undefined) {
+                    return [];
                   }
 
-                  incorrectStreak += 1;
-                }
+                  const card: WordMemoryScheduler.WordMemoryCard = {
+                    difficulty: state.difficulty,
+                    dueAtMillis: DateTime.toEpochMillis(state.dueAt),
+                    elapsedDays: state.elapsedDays,
+                    lapses: state.lapses,
+                    ...(state.lastReviewAt === undefined
+                      ? {}
+                      : {
+                          lastReviewAtMillis: DateTime.toEpochMillis(
+                            state.lastReviewAt
+                          ),
+                        }),
+                    learningSteps: state.learningSteps,
+                    phase: state.phase,
+                    repetitions: state.repetitions,
+                    scheduledDays: state.scheduledDays,
+                    stability: state.stability,
+                  };
+                  const isDue = WordMemoryScheduler.isDue({ card, now });
 
-                const reviewState = WordPracticeReview.reviewStateForWord({
-                  now,
-                  states,
-                  wordText: word.text,
-                });
-                const reviewSubmissions = _wordPracticeReviewSubmissions({
-                  submissions,
-                  wordText: word.text,
-                });
-                const reviewProgress =
-                  WordPracticeReview.correctProgressAtLevel({
-                    state: reviewState,
-                    submissions: reviewSubmissions,
-                  });
-                const reviewProgressTarget = WordPracticeReview.reviewLevelRule(
-                  {
-                    level: reviewState.level,
-                  }
-                ).correctSubmissionTarget;
-                const nextReviewAt =
-                  reviewState.nextReviewAtMillis === undefined
-                    ? undefined
-                    : DateTime.makeUnsafe(reviewState.nextReviewAtMillis);
-
-                return {
-                  accuracy: EffectArray.isReadonlyArrayNonEmpty(attempts)
-                    ? Math.round((correctCount / attempts.length) * 100)
-                    : 0,
-                  attemptCount: attempts.length,
-                  attempts,
-                  correctCount,
-                  correctStreak,
-                  incorrectCount: attempts.length - correctCount,
-                  incorrectStreak,
-                  isDue: WordPracticeReview.isDue({
-                    now,
-                    state: reviewState,
-                  }),
-                  ...(latestAttempt === undefined
-                    ? {}
-                    : {
-                        lastSubmittedAt: latestAttempt.submission.submittedAt,
+                  return [
+                    {
+                      accuracy:
+                        state.attemptCount === 0
+                          ? 0
+                          : Math.round(
+                              (state.correctCount / state.attemptCount) * 100
+                            ),
+                      attemptCount: state.attemptCount,
+                      correctCount: state.correctCount,
+                      incorrectCount: state.incorrectCount,
+                      isDue,
+                      retrievability: WordMemoryScheduler.retrievability({
+                        card,
+                        now,
                       }),
-                  ...(nextReviewAt === undefined ? {} : { nextReviewAt }),
-                  reviewLevel: reviewState.level,
-                  reviewProgress,
-                  reviewProgressTarget,
-                  selectionWeight:
-                    selectionCandidates.find(
-                      (candidate) => candidate.word.text === word.text
-                    )?.selectionWeight ?? 0,
-                  word,
-                };
-              });
+                      state,
+                      status:
+                        state.phase === "new" ||
+                        state.phase === "learning" ||
+                        state.phase === "relearning"
+                          ? state.phase
+                          : isDue
+                            ? "due"
+                            : "scheduled",
+                      word,
+                    },
+                  ];
+                });
 
               return {
                 summaries: summaries.sort((left, right) => {
-                  const selectionWeightDifference =
-                    right.selectionWeight - left.selectionWeight;
+                  if (left.isDue !== right.isDue) {
+                    return left.isDue ? -1 : 1;
+                  }
 
-                  if (selectionWeightDifference !== 0) {
-                    return selectionWeightDifference;
+                  const retrievabilityDifference =
+                    left.retrievability - right.retrievability;
+
+                  if (retrievabilityDifference !== 0) {
+                    return retrievabilityDifference;
                   }
 
                   return (
-                    (right.lastSubmittedAt === undefined
-                      ? 0
-                      : _toEpochMillis({
-                          dateTime: right.lastSubmittedAt,
-                        })) -
-                    (left.lastSubmittedAt === undefined
-                      ? 0
-                      : _toEpochMillis({
-                          dateTime: left.lastSubmittedAt,
-                        }))
+                    DateTime.toEpochMillis(left.state.dueAt) -
+                    DateTime.toEpochMillis(right.state.dueAt)
                   );
                 }),
                 todayAttemptCount,
@@ -370,49 +286,38 @@ export const makeWordPracticeHistoryMachine = ({
     context: {
       matchingSummaries: [],
       query: "",
+      selectedAttempts: [],
       summaries: [],
       todayAttemptCount: 0,
+      visibleSummaryCount: 100,
     },
     initial: "Loading",
     states: {
-      Failure: {
-        on: {
-          changeQuery: ({ event }) => ({
-            context: {
-              query: event.query,
-            },
-          }),
-          refresh: {
-            target: "Loading",
-          },
-        },
-      },
       Loading: {
         invoke: {
           src: "loadWordPracticeHistory",
-          onDone: ({ context, event }) => {
-            const { summaries, todayAttemptCount } = event.output;
-
-            return {
-              target: "Ready",
-              context: {
-                matchingSummaries: _filterSummaries({
-                  query: context.query,
-                  summaries,
-                }),
-                message: undefined,
-                summaries,
-                todayAttemptCount,
-              },
-            };
-          },
+          onDone: ({ context, event }) => ({
+            target: "Ready",
+            context: {
+              matchingSummaries: _filterSummaries({
+                query: context.query,
+                summaries: event.output.summaries,
+              }),
+              message: undefined,
+              selectedAttempts: [],
+              selectedWordId: undefined,
+              summaries: event.output.summaries,
+              todayAttemptCount: event.output.todayAttemptCount,
+              visibleSummaryCount: 100,
+            },
+          }),
           onError: ({ event }) => ({
             target: "Failure",
             context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not load word practice history.",
+              message: _errorMessage({
+                error: event.error,
+                fallback: "Could not load word practice history.",
+              }),
             },
           }),
         },
@@ -425,6 +330,69 @@ export const makeWordPracticeHistoryMachine = ({
                 query: event.query,
                 summaries: context.summaries,
               }),
+              query: event.query,
+              visibleSummaryCount: 100,
+            },
+          }),
+          closeWord: {
+            context: {
+              selectedAttempts: [],
+              selectedWordId: undefined,
+            },
+          },
+          refresh: {
+            target: "Loading",
+          },
+          loadMore: ({ context }) => ({
+            context: {
+              visibleSummaryCount: context.visibleSummaryCount + 100,
+            },
+          }),
+          selectWord: ({ event }) => ({
+            target: "LoadingAttempts",
+            context: {
+              selectedAttempts: [],
+              selectedWordId: event.wordId,
+            },
+          }),
+        },
+      },
+      LoadingAttempts: {
+        invoke: {
+          src: "loadWordAttempts",
+          input: ({ context }) => context.selectedWordId,
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message: undefined,
+              selectedAttempts: event.output.attempts,
+              selectedWordId: event.output.wordId,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message: _errorMessage({
+                error: event.error,
+                fallback: "Could not load word attempts.",
+              }),
+            },
+          }),
+        },
+        on: {
+          closeWord: {
+            target: "Ready",
+            context: {
+              selectedAttempts: [],
+              selectedWordId: undefined,
+            },
+          },
+        },
+      },
+      Failure: {
+        on: {
+          changeQuery: ({ event }) => ({
+            context: {
               query: event.query,
             },
           }),

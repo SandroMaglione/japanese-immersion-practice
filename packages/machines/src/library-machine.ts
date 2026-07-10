@@ -1,5 +1,5 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText } from "@jip/services";
+import { FuriganaText, WordMemoryScheduler } from "@jip/services";
 import {
   Array as EffectArray,
   DateTime,
@@ -13,7 +13,7 @@ import { createAsyncLogic, setup } from "xstate";
 import type { MachineRuntime } from "./runtime.ts";
 
 const LibraryDataSchema = Schema.Struct({
-  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
 const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
@@ -30,7 +30,7 @@ const LibraryContextSchema = Schema.Struct({
   importedWordCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
   wordDescription: Schema.String,
-  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
   wordImportJsonText: Schema.String,
   wordText: Schema.String,
   wordTranslation: Schema.String,
@@ -66,11 +66,11 @@ const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
   skippedCount: Schema.Number,
   skippedReasons: Schema.Array(Schema.String),
-  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
 const ExportWordsInputSchema = Schema.Struct({
-  wordEntries: Schema.Array(IndexedDb.Domain.WordEntry),
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
 const ExportWordsResultSchema = Schema.Struct({
@@ -149,7 +149,7 @@ export const WordImportJsonExample = Formatter.formatJson(
 
 const _loadLibraryData = Effect.gen(function* () {
   const store = yield* IndexedDb.Store.Store;
-  const wordEntries = yield* store.listWordEntries();
+  const wordEntries = yield* store.listWords();
 
   return {
     wordEntries,
@@ -158,6 +158,54 @@ const _loadLibraryData = Effect.gen(function* () {
 
 const _normalizeWordText = ({ text }: { readonly text: string }) =>
   FuriganaText.normalizePlainText({ text });
+
+const _makeWordAndState = ({
+  description,
+  now,
+  text,
+  translation,
+}: {
+  readonly description?: string;
+  readonly now: number;
+  readonly text: string;
+  readonly translation: string;
+}) =>
+  Effect.gen(function* () {
+    const id = crypto.randomUUID();
+    const word = yield* Schema.decodeEffect(IndexedDb.Domain.Word)({
+      id,
+      createdAt: now,
+      ...(description === undefined ? {} : { description }),
+      text,
+      translation,
+      updatedAt: now,
+    });
+    const card = WordMemoryScheduler.initialCard({ now });
+    const state = yield* Schema.decodeEffect(IndexedDb.Domain.WordMemoryState)({
+      wordId: id,
+      phase: card.phase,
+      dueAt: card.dueAtMillis,
+      stability: card.stability,
+      difficulty: card.difficulty,
+      elapsedDays: card.elapsedDays,
+      scheduledDays: card.scheduledDays,
+      learningSteps: card.learningSteps,
+      repetitions: card.repetitions,
+      lapses: card.lapses,
+      attemptCount: 0,
+      correctCount: 0,
+      incorrectCount: 0,
+      lastPracticedAt: now,
+      schedulerVersion: WordMemoryScheduler.SchedulerVersion,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return {
+      state,
+      word,
+    };
+  });
 
 export const makeLibraryMachine = ({
   runtime,
@@ -231,7 +279,7 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              yield* store.deleteAllWordEntries();
+              yield* store.deleteAllWords();
 
               return yield* _loadLibraryData;
             })
@@ -254,7 +302,7 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const existingWordEntries = yield* store.listWordEntries();
+              const existingWordEntries = yield* store.listWords();
 
               if (!existingWordEntries.some((entry) => entry.text === text)) {
                 return yield* Effect.fail(
@@ -262,7 +310,17 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              yield* store.deleteWordEntry(text);
+              const word = existingWordEntries.find(
+                (entry) => entry.text === text
+              );
+
+              if (word === undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not find that word in your library.")
+                );
+              }
+
+              yield* store.deleteWord(word.id);
 
               return yield* _loadLibraryData;
             })
@@ -389,7 +447,7 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const existingWordEntries = yield* store.listWordEntries();
+              const existingWordEntries = yield* store.listWords();
               const newWords: typeof parsedWords = [];
 
               for (const parsedWord of unrepeatedWords) {
@@ -410,22 +468,23 @@ export const makeLibraryMachine = ({
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const wordEntries = yield* Effect.all(
+              const wordsAndStates = yield* Effect.all(
                 newWords.map((word) =>
-                  Schema.decodeEffect(IndexedDb.Domain.WordEntry)({
-                    createdAt: now,
-                    ...(word.description === undefined
-                      ? {}
-                      : { description: word.description }),
+                  _makeWordAndState({
+                    description: word.description,
+                    now,
                     text: word.text,
                     translation: word.translation,
-                    updatedAt: now,
                   })
                 )
               );
+              const wordEntries = wordsAndStates.map(({ word }) => word);
 
               if (EffectArray.isReadonlyArrayNonEmpty(wordEntries)) {
-                yield* store.insertWordEntries(wordEntries);
+                yield* store.insertWordsWithMemoryStates({
+                  states: wordsAndStates.map(({ state }) => state),
+                  words: wordEntries,
+                });
               }
 
               const libraryData = yield* _loadLibraryData;
@@ -465,7 +524,7 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const existingWordEntries = yield* store.listWordEntries();
+              const existingWordEntries = yield* store.listWords();
 
               if (
                 existingWordEntries.some(
@@ -479,17 +538,17 @@ export const makeLibraryMachine = ({
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const wordEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordEntry
-              )({
-                createdAt: now,
+              const { state, word: wordEntry } = yield* _makeWordAndState({
                 ...(description === "" ? {} : { description }),
+                now,
                 text,
                 translation,
-                updatedAt: now,
               });
 
-              yield* store.insertWordEntry(wordEntry);
+              yield* store.insertWordWithMemoryState({
+                state,
+                word: wordEntry,
+              });
 
               return yield* _loadLibraryData;
             })
@@ -522,7 +581,7 @@ export const makeLibraryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
-              const existingWordEntries = yield* store.listWordEntries();
+              const existingWordEntries = yield* store.listWords();
               const existingWordEntry = existingWordEntries.find(
                 (entry) => entry.text === originalText
               );
@@ -548,8 +607,9 @@ export const makeLibraryMachine = ({
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const wordEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordEntry
+                IndexedDb.Domain.Word
               )({
+                id: existingWordEntry.id,
                 createdAt: DateTime.toEpochMillis(existingWordEntry.createdAt),
                 ...(description === "" ? {} : { description }),
                 text,
@@ -557,10 +617,7 @@ export const makeLibraryMachine = ({
                 updatedAt: now,
               });
 
-              yield* store.updateWordEntry({
-                originalText,
-                wordEntry,
-              });
+              yield* store.updateWord(wordEntry);
 
               return yield* _loadLibraryData;
             })

@@ -1,9 +1,8 @@
 import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
-import { Progress } from "@base-ui/react/progress";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { PracticeOverviewMachine } from "@jip/machines";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import {
   ArrowRight,
@@ -12,7 +11,6 @@ import {
   CircleX,
   LoaderCircle,
   RefreshCw,
-  Sparkles,
 } from "lucide-react";
 import type { Actor } from "xstate";
 
@@ -31,125 +29,45 @@ export const Route = createFileRoute("/practice")({
 
 function PracticeRoute() {
   const [snapshot, , actor] = useMachine(practiceOverviewMachine);
-  const isPracticeBatchFinished = snapshot.matches("BatchFinished");
-  const isPracticeReady = snapshot.matches("Ready");
-  const isPracticeRevealed = snapshot.matches("Revealed");
-  const isPracticeRefreshing = snapshot.matches("RefreshingBatch");
-  const isPracticeStartingBatch = snapshot.matches("StartingBatch");
-  const isPracticeSubmitting = snapshot.matches("Submitting");
+  const isEmptyLibrary = snapshot.value === "EmptyLibrary";
+  const isFailure = snapshot.value === "Failure";
+  const isLoading = snapshot.value === "Loading";
+  const isRevealed = snapshot.value === "Revealed";
+  const isSubmitting = snapshot.value === "Submitting";
 
-  return (
-    <div className="flex min-w-0 flex-col gap-5 sm:gap-6">
-      {snapshot.matches("Loading") ? (
-        <div className="py-10 text-center text-sm font-bold text-ink-muted">
-          Loading practice data
-        </div>
-      ) : null}
-      {snapshot.matches("Failure") ? (
-        <div className="flex items-center justify-between gap-4 py-4 text-sm font-bold text-accent">
-          <span>{snapshot.context.message}</span>
-          <Button
-            type="button"
-            className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
-            onClick={() => {
-              actor.trigger.refresh();
-            }}
-          >
-            <RefreshCw size={15} strokeWidth={2.5} />
-            Retry
-          </Button>
-        </div>
-      ) : null}
-      {isPracticeReady ||
-      isPracticeBatchFinished ||
-      isPracticeRevealed ||
-      isPracticeRefreshing ||
-      isPracticeStartingBatch ||
-      isPracticeSubmitting ? (
-        <PracticeSession
-          actor={actor}
-          isBatchFinished={isPracticeBatchFinished}
-          isRevealed={isPracticeRevealed}
-          isStartingBatch={isPracticeStartingBatch}
-          isSubmitting={
-            isPracticeSubmitting ||
-            isPracticeRefreshing ||
-            isPracticeStartingBatch
-          }
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function PracticeSession({
-  actor,
-  isBatchFinished,
-  isRevealed,
-  isStartingBatch,
-  isSubmitting,
-}: {
-  readonly actor: Actor<typeof practiceOverviewMachine>;
-  readonly isBatchFinished: boolean;
-  readonly isRevealed: boolean;
-  readonly isStartingBatch: boolean;
-  readonly isSubmitting: boolean;
-}) {
-  const completedBatch = useSelector(
-    actor,
-    (snapshot) => snapshot.context.completedBatch
-  );
-  const currentResponse = useSelector(
-    actor,
-    (snapshot) => snapshot.context.currentResponse
-  );
-  const lastResult = useSelector(
-    actor,
-    (snapshot) => snapshot.context.lastResult
-  );
-  const message = useSelector(actor, (snapshot) => snapshot.context.message);
-  const nextReviewAt = useSelector(
-    actor,
-    (snapshot) => snapshot.context.nextReviewAt
-  );
-  const batch = useSelector(actor, (snapshot) => snapshot.context.batch);
-  const queue = useSelector(actor, (snapshot) => snapshot.context.queue);
-  const currentItem = queue[0];
-  const isShowingResult = isRevealed && lastResult !== undefined;
-  const isShowingFinishedResult =
-    isShowingResult && lastResult.batchCompleted !== undefined;
-  const isShowingBatchFinished =
-    (isBatchFinished || isStartingBatch) && completedBatch !== undefined;
-  const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
-  const resultIconLabel =
-    lastResult?.isCorrect === true ? "Correct" : "Incorrect";
-  const resultIconColor =
-    lastResult?.isCorrect === true ? "text-sky" : "text-berry";
-  const batchProgressPercent =
-    batch === undefined || batch.totalCount === 0
-      ? 0
-      : Math.round((batch.completedCount / batch.totalCount) * 100);
-  const didLastResultLevelUp =
-    lastResult !== undefined &&
-    lastResult.reviewLevel > lastResult.previousReviewLevel;
-
-  if (
-    currentItem === undefined &&
-    !isShowingResult &&
-    !isShowingBatchFinished
-  ) {
-    const hasPausedWords = nextReviewAt !== undefined;
-
+  if (isLoading) {
     return (
-      <section className="flex min-w-0 flex-col justify-start gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:items-center sm:justify-center sm:py-6">
+      <div className="py-10 text-center text-sm font-bold text-ink-muted">
+        Loading practice data
+      </div>
+    );
+  }
+
+  if (isFailure) {
+    return (
+      <div className="flex items-center justify-between gap-4 py-4 text-sm font-bold text-accent">
+        <span>{snapshot.context.message}</span>
+        <Button
+          type="button"
+          className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-black transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+          onClick={() => {
+            actor.trigger.refresh();
+          }}
+        >
+          <RefreshCw size={15} strokeWidth={2.5} />
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (isEmptyLibrary) {
+    return (
+      <section className="flex min-w-0 flex-col items-center justify-center gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:py-6">
         <div>
-          <div className="text-lg font-black">
-            {hasPausedWords ? "All words paused" : "No words yet"}
-          </div>
+          <div className="text-lg font-black">No words yet</div>
           <div className="mt-1 text-sm font-semibold text-ink-muted">
-            {hasPausedWords
-              ? `Next review ${formatDateTime({ dateTime: nextReviewAt })}`
-              : "Add a few entries to shape the first practice session."}
+            Add a few entries to begin a continuous practice session.
           </div>
         </div>
         <Link
@@ -163,97 +81,127 @@ function PracticeSession({
   }
 
   return (
-    <section className="flex min-w-0 flex-col gap-8 py-2 sm:grid sm:min-h-[calc(100svh-12rem)] sm:grid-cols-[minmax(0,1fr)] sm:grid-rows-[3.5rem_minmax(0,1fr)] sm:gap-0 sm:py-6">
-      <div className="mx-auto flex w-full max-w-full min-w-0 items-center gap-3 sm:max-w-xl">
-        <Tooltip.Root>
-          <Tooltip.Trigger
-            render={
-              <Button
-                type="button"
-                aria-label="Refresh batch"
-                className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
-                disabled={
-                  isSubmitting ||
-                  isShowingBatchFinished ||
-                  isShowingFinishedResult
-                }
-                focusableWhenDisabled
-                onClick={() => {
-                  actor.trigger.refresh();
-                }}
-              />
-            }
+    <PracticeSession
+      actor={actor}
+      isRevealed={isRevealed}
+      isSubmitting={isSubmitting}
+    />
+  );
+}
+
+function PracticeSession({
+  actor,
+  isRevealed,
+  isSubmitting,
+}: {
+  readonly actor: Actor<typeof practiceOverviewMachine>;
+  readonly isRevealed: boolean;
+  readonly isSubmitting: boolean;
+}) {
+  const currentItem = useSelector(
+    actor,
+    (snapshot) => snapshot.context.currentItem
+  );
+  const currentResponse = useSelector(
+    actor,
+    (snapshot) => snapshot.context.currentResponse
+  );
+  const lastResult = useSelector(
+    actor,
+    (snapshot) => snapshot.context.lastResult
+  );
+  const message = useSelector(actor, (snapshot) => snapshot.context.message);
+  const stats = useSelector(actor, (snapshot) => snapshot.context.stats);
+  const isShowingResult = isRevealed && lastResult !== undefined;
+  const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
+  const displayedPhase = isShowingResult
+    ? lastResult.phaseAfter
+    : currentItem?.state.phase;
+  const displayedKind = isShowingResult ? lastResult.kind : currentItem?.kind;
+  const isExtraPractice = displayedKind === "extra";
+  const statusLabel = isExtraPractice
+    ? "Extra practice"
+    : displayedPhase === "new"
+      ? "New"
+      : displayedPhase === "learning"
+        ? "Learning"
+        : displayedPhase === "relearning"
+          ? "Relearning"
+          : isShowingResult
+            ? "Scheduled"
+            : "Due review";
+  const statusClassName = isExtraPractice
+    ? "border-gold/35 bg-gold-soft text-gold"
+    : displayedPhase === "new"
+      ? "border-sky/35 bg-sky/10 text-sky"
+      : displayedPhase === "learning"
+        ? "border-teal/35 bg-teal-soft text-teal"
+        : displayedPhase === "relearning"
+          ? "border-accent/35 bg-accent-soft text-accent"
+          : isShowingResult
+            ? "border-line bg-field text-ink"
+            : "border-gold/35 bg-gold-soft text-gold";
+
+  return (
+    <section className="grid h-[calc(100svh-9.5rem)] min-h-0 min-w-0 grid-rows-[2.75rem_minmax(0,1fr)] gap-2 overflow-hidden py-1 sm:h-auto sm:min-h-[calc(100svh-12rem)] sm:grid-rows-[2.75rem_minmax(0,1fr)] sm:gap-4 sm:py-6">
+      <header
+        className={`mx-auto flex h-11 w-full max-w-xl items-center justify-between gap-3 rounded-lg border px-3 shadow-[0_4px_14px_rgba(0,0,0,0.1)] transition-colors ${isExtraPractice ? "border-gold/50 bg-gold-soft/45" : "border-line bg-panel"}`}
+      >
+        <div className="flex min-w-0 items-center gap-2.5">
+          <strong className="text-2xl font-black tabular-nums leading-none text-ink">
+            {stats.attemptCount}
+          </strong>
+          <span aria-hidden="true" className="text-xs text-ink-muted">
+            ・
+          </span>
+          <span
+            aria-label={`${stats.correctCount} correct`}
+            className="inline-flex items-center gap-1 text-xs font-black tabular-nums text-sky"
           >
-            <RefreshCw size={16} strokeWidth={2.5} />
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Positioner sideOffset={8}>
-              <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-                Refresh batch
-              </Tooltip.Popup>
-            </Tooltip.Positioner>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-        {batch === undefined ? null : (
-          <Progress.Root
-            className="grid min-w-0 flex-1 gap-2 text-left"
-            value={batchProgressPercent}
-            getAriaValueText={() =>
-              `${batch.completedCount} of ${batch.totalCount} words complete`
-            }
+            <CircleCheck aria-hidden="true" size={14} strokeWidth={2.5} />
+            {stats.correctCount}
+          </span>
+          <span
+            aria-label={`${stats.attemptCount - stats.correctCount} incorrect`}
+            className="inline-flex items-center gap-1 text-xs font-black tabular-nums text-berry"
           >
-            <div className="flex min-w-0 items-center justify-between gap-3 text-xs font-black uppercase text-ink-muted">
-              <Progress.Label>Batch {batch.batchNumber}</Progress.Label>
-              <Progress.Value className="shrink-0">
-                {() => `${batch.completedCount} / ${batch.totalCount}`}
-              </Progress.Value>
-            </div>
-            <Progress.Track className="h-1.5 overflow-hidden rounded-sm bg-field">
-              <Progress.Indicator className="h-full rounded-sm bg-teal transition-[width]" />
-            </Progress.Track>
-          </Progress.Root>
-        )}
-      </div>
+            <CircleX aria-hidden="true" size={14} strokeWidth={2.5} />
+            {stats.attemptCount - stats.correctCount}
+          </span>
+        </div>
+        <span
+          aria-live="polite"
+          className={`inline-flex min-h-6 items-center rounded-full border px-2.5 text-[0.7rem] font-black ${statusClassName}`}
+        >
+          {statusLabel}
+        </span>
+      </header>
       <form
-        className="mx-auto flex min-h-0 w-full max-w-full min-w-0 flex-col items-center justify-start gap-5 text-center sm:max-w-xl sm:justify-center sm:gap-8"
+        className="mx-auto grid min-h-0 w-full max-w-xl min-w-0 grid-rows-[minmax(0,1fr)_3.5rem_3.5rem] gap-3 overflow-hidden pb-10 text-center sm:grid-rows-[minmax(0,1fr)_3.5rem_4rem] sm:gap-5"
         onSubmit={(event) => {
           event.preventDefault();
           actor.trigger.submit();
         }}
       >
-        <div className="flex min-h-36 w-full flex-col items-center justify-center gap-3 sm:min-h-48">
-          {isShowingBatchFinished ? (
-            <div className="grid w-full justify-items-center gap-3">
-              <h1 className="w-full wrap-break-word text-3xl font-black leading-tight sm:text-5xl">
-                This batch is finished.
-              </h1>
-              <p className="w-full wrap-break-word text-base font-black leading-6 text-ink-muted sm:text-xl">
-                Do you want to start the next?
-              </p>
-              <p className="w-full wrap-break-word text-sm font-bold leading-6 text-ink-muted">
-                Batch {completedBatch.batchNumber} ·{" "}
-                {completedBatch.correctCount}/{completedBatch.totalCount}{" "}
-                correct
-              </p>
-            </div>
-          ) : isShowingResult ? (
+        <div className="flex min-h-0 w-full flex-col items-center justify-center gap-3 overflow-y-auto overscroll-contain px-1">
+          {isShowingResult ? (
             <div className="grid w-full gap-3">
               <ResultIcon
-                aria-label={resultIconLabel}
-                className={`justify-self-center ${resultIconColor}`}
+                aria-label={lastResult.isCorrect ? "Correct" : "Incorrect"}
+                className={`justify-self-center ${lastResult.isCorrect ? "text-sky" : "text-berry"}`}
                 role="img"
                 size={34}
                 strokeWidth={2.5}
               />
               <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                <WordText text={lastResult.wordText} />
+                <WordText text={lastResult.word.text} />
               </h1>
               <p className="w-full wrap-break-word text-lg font-black leading-tight text-ink-muted sm:text-2xl">
-                {lastResult.wordTranslation}
+                {lastResult.word.translation}
               </p>
-              {lastResult.wordDescription === undefined ? null : (
+              {lastResult.word.description === undefined ? null : (
                 <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
-                  {lastResult.wordDescription}
+                  {lastResult.word.description}
                 </p>
               )}
             </div>
@@ -276,29 +224,7 @@ function PracticeSession({
             </div>
           )}
         </div>
-        {isShowingBatchFinished ? (
-          <Button
-            type="button"
-            autoFocus
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:bg-field disabled:text-ink-muted"
-            disabled={isStartingBatch}
-            onClick={() => {
-              actor.trigger.startNextBatch();
-            }}
-          >
-            {isStartingBatch ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin"
-                size={18}
-                strokeWidth={2.5}
-              />
-            ) : (
-              <ArrowRight aria-hidden="true" size={18} strokeWidth={2.5} />
-            )}
-            {isStartingBatch ? "Starting" : "Start next batch"}
-          </Button>
-        ) : isShowingResult ? (
+        {isShowingResult ? (
           <Tooltip.Root>
             <Tooltip.Trigger
               render={
@@ -306,7 +232,7 @@ function PracticeSession({
                   type="button"
                   aria-label="Next"
                   autoFocus
-                  className="inline-flex h-14 w-14 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+                  className="inline-flex h-14 w-14 items-center justify-center justify-self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
                   onClick={() => {
                     actor.trigger.submit();
                   }}
@@ -341,9 +267,7 @@ function PracticeSession({
               type="text"
               value={currentResponse}
               onValueChange={(response) => {
-                actor.trigger.changeResponse({
-                  response,
-                });
+                actor.trigger.changeResponse({ response });
               }}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" || event.nativeEvent.isComposing) {
@@ -387,106 +311,28 @@ function PracticeSession({
             </Tooltip.Root>
           </div>
         )}
-        <div className="grid min-h-12 w-full justify-items-center gap-2 text-sm font-bold leading-6 text-ink-muted">
-          {isShowingBatchFinished ? (
-            message === undefined ? null : (
-              <span className="text-accent">{message}</span>
-            )
-          ) : message !== undefined ? (
+        <div className="grid min-h-14 w-full justify-items-center gap-1 text-sm font-bold leading-6 text-ink-muted">
+          {message === undefined ? null : (
             <span className="text-accent">{message}</span>
-          ) : lastResult !== undefined ? (
-            lastResult.batchCompleted === undefined ? (
-              <div className="grid max-w-full justify-items-center gap-1">
-                <p>
-                  <span
-                    className={
-                      lastResult.isCorrect ? "text-teal" : "text-accent"
-                    }
-                  >
-                    {lastResult.isCorrect ? "Correct" : "Incorrect"}
-                  </span>
-                  <span className="text-ink-muted">
-                    {" "}
-                    · Batch {lastResult.batchNumber}
-                  </span>
-                </p>
-                {didLastResultLevelUp ? (
-                  <div className="practice-level-up mt-2 grid max-w-full gap-1 rounded-md border border-gold/60 px-4 py-3 text-left shadow-[0_12px_42px_rgba(232,197,107,0.16)]">
-                    <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase text-gold">
-                      <Sparkles
-                        aria-hidden="true"
-                        className="practice-level-up-icon shrink-0"
-                        size={15}
-                        strokeWidth={2.5}
-                      />
-                      Level up
-                    </span>
-                    <span className="wrap-break-word text-base font-black leading-6 text-ink">
-                      Level {lastResult.previousReviewLevel} →{" "}
-                      {lastResult.reviewLevel}
-                    </span>
-                  </div>
-                ) : null}
-                {didLastResultLevelUp ? null : (
-                  <span className="text-ink-muted">
-                    Level {lastResult.reviewLevel} · {lastResult.reviewProgress}
-                    /{lastResult.reviewProgressTarget}
-                  </span>
-                )}
-                {lastResult.nextReviewAt === undefined ? null : (
-                  <span className="text-ink-muted">
-                    Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
-                  </span>
-                )}
-              </div>
-            ) : (
-              <div className="grid max-w-full justify-items-center gap-1">
-                <p>
-                  <span
-                    className={
-                      lastResult.isCorrect ? "text-teal" : "text-accent"
-                    }
-                  >
-                    {lastResult.isCorrect ? "Correct" : "Incorrect"}
-                  </span>
-                  <span className="text-ink-muted">
-                    {" "}
-                    · Batch {lastResult.batchCompleted.batchNumber} complete ·{" "}
-                    {lastResult.batchCompleted.correctCount}/
-                    {lastResult.batchCompleted.totalCount} correct
-                  </span>
-                </p>
-                {didLastResultLevelUp ? (
-                  <div className="practice-level-up mt-2 grid max-w-full gap-1 rounded-md border border-gold/60 px-4 py-3 text-left shadow-[0_12px_42px_rgba(232,197,107,0.16)]">
-                    <span className="inline-flex min-w-0 items-center gap-2 text-xs font-black uppercase text-gold">
-                      <Sparkles
-                        aria-hidden="true"
-                        className="practice-level-up-icon shrink-0"
-                        size={15}
-                        strokeWidth={2.5}
-                      />
-                      Level up
-                    </span>
-                    <span className="wrap-break-word text-base font-black leading-6 text-ink">
-                      Level {lastResult.previousReviewLevel} →{" "}
-                      {lastResult.reviewLevel}
-                    </span>
-                  </div>
-                ) : null}
-                {didLastResultLevelUp ? null : (
-                  <span className="text-ink-muted">
-                    Level {lastResult.reviewLevel} · {lastResult.reviewProgress}
-                    /{lastResult.reviewProgressTarget}
-                  </span>
-                )}
-                {lastResult.nextReviewAt === undefined ? null : (
-                  <span className="text-ink-muted">
-                    Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
-                  </span>
-                )}
-              </div>
-            )
-          ) : null}
+          )}
+          {lastResult === undefined ? null : (
+            <>
+              <span
+                className={lastResult.isCorrect ? "text-teal" : "text-accent"}
+              >
+                {lastResult.isCorrect ? "Correct" : "Incorrect"} ·{" "}
+                {lastResult.kind === "extra"
+                  ? "Extra practice"
+                  : lastResult.phaseAfter.charAt(0).toLocaleUpperCase() +
+                    lastResult.phaseAfter.slice(1)}
+              </span>
+              <span>
+                {lastResult.changedSchedule
+                  ? `Next ${formatDateTime({ dateTime: lastResult.nextReviewAt })}`
+                  : `Schedule unchanged · Next ${formatDateTime({ dateTime: lastResult.nextReviewAt })}`}
+              </span>
+            </>
+          )}
         </div>
       </form>
     </section>

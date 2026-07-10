@@ -1,99 +1,110 @@
 import { IndexedDb } from "@jip/indexeddb";
 import {
   FuriganaText,
-  WordPracticeReview,
-  WordPracticeSelection,
+  WordMemoryScheduler,
+  WordSessionSelection,
 } from "@jip/services";
-import { Array as EffectArray, DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
 import type { MachineRuntime } from "./runtime.ts";
 
-const PracticeBatchSummarySchema = Schema.Struct({
-  id: IndexedDb.Domain.WordPracticeBatchId,
-  batchNumber: Schema.Number,
-  completedCount: Schema.Number,
-  totalCount: Schema.Number,
+const SessionMissSchema = Schema.Struct({
+  count: Schema.Number,
+  wordId: Schema.String,
 });
 
-const CompletedPracticeBatchSummarySchema = Schema.Struct({
-  batchNumber: Schema.Number,
+const SessionSelectionStateSchema = Schema.Struct({
+  consecutiveLearningSelections: Schema.Number,
+  dueReviewSelectionsSinceForced: Schema.Number,
+  misses: Schema.Array(SessionMissSchema),
+  newWordCredit: Schema.Number,
+  recentWordIds: Schema.Array(Schema.String),
+});
+
+const PracticeItemSchema = Schema.Struct({
+  kind: IndexedDb.Domain.WordPracticeKind,
+  source: IndexedDb.Domain.WordPracticeSource,
+  state: IndexedDb.Domain.WordMemoryState,
+  word: IndexedDb.Domain.Word,
+});
+
+const PracticeSessionStatsSchema = Schema.Struct({
+  attemptCount: Schema.Number,
   correctCount: Schema.Number,
-  incorrectCount: Schema.Number,
-  totalCount: Schema.Number,
+  extraCount: Schema.Number,
+  newCount: Schema.Number,
+  scheduledCount: Schema.Number,
 });
 
-const PracticeQueueItemSchema = Schema.Struct({
-  batchId: IndexedDb.Domain.WordPracticeBatchId,
-  batchNumber: Schema.Number,
-  batchPosition: Schema.Number,
-  correctStreak: Schema.Number,
-  incorrectStreak: Schema.Number,
-  priorityScore: Schema.Number,
-  reviewLevel: Schema.Number,
-  reviewProgress: Schema.Number,
-  reviewProgressTarget: Schema.Number,
-  word: IndexedDb.Domain.WordEntry,
-});
-
-const PracticeSubmissionResultSchema = Schema.Struct({
-  batchCompleted: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
-  batchNumber: Schema.Number,
+const PracticeResultSchema = Schema.Struct({
+  changedSchedule: Schema.Boolean,
+  difficulty: Schema.Number,
   isCorrect: Schema.Boolean,
-  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  previousReviewLevel: Schema.Number,
-  reviewLevel: Schema.Number,
-  reviewProgress: Schema.Number,
-  reviewProgressTarget: Schema.Number,
-  wordDescription: Schema.optionalKey(Schema.String),
-  wordText: Schema.String,
-  wordTranslation: Schema.String,
-});
-
-const PracticeSubmitResultSchema = Schema.Struct({
-  batch: PracticeBatchSummarySchema,
-  batchCompleted: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
-  batchNumber: Schema.Number,
-  isCorrect: Schema.Boolean,
-  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  previousReviewLevel: Schema.Number,
-  queue: Schema.Array(PracticeQueueItemSchema),
-  reviewLevel: Schema.Number,
-  reviewProgress: Schema.Number,
-  reviewProgressTarget: Schema.Number,
-  wordDescription: Schema.optionalKey(Schema.String),
-  wordText: Schema.String,
-  wordTranslation: Schema.String,
+  kind: IndexedDb.Domain.WordPracticeKind,
+  nextReviewAt: Schema.DateTimeUtcFromMillis,
+  phaseAfter: IndexedDb.Domain.WordMemoryPhase,
+  phaseBefore: IndexedDb.Domain.WordMemoryPhase,
+  source: IndexedDb.Domain.WordPracticeSource,
+  stability: Schema.Number,
+  word: IndexedDb.Domain.Word,
 });
 
 const PracticeSessionDataSchema = Schema.Struct({
-  batch: Schema.optionalKey(PracticeBatchSummarySchema),
-  completedBatch: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
-  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  queue: Schema.Array(PracticeQueueItemSchema),
+  dueReviewCount: Schema.Number,
+  item: Schema.optionalKey(PracticeItemSchema),
+  selectionState: SessionSelectionStateSchema,
+  sessionId: IndexedDb.Domain.WordPracticeSessionId,
+});
+
+const PracticeSubmitResultSchema = Schema.Struct({
+  dueReviewCount: Schema.Number,
+  message: Schema.optionalKey(Schema.String),
+  nextItem: Schema.optionalKey(PracticeItemSchema),
+  result: PracticeResultSchema,
+  selectionState: SessionSelectionStateSchema,
+  stats: PracticeSessionStatsSchema,
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
-  batch: Schema.optionalKey(PracticeBatchSummarySchema),
-  completedBatch: Schema.optionalKey(CompletedPracticeBatchSummarySchema),
+  currentItem: Schema.optionalKey(PracticeItemSchema),
   currentResponse: Schema.String,
-  lastResult: Schema.optionalKey(PracticeSubmissionResultSchema),
+  dueReviewCount: Schema.Number,
+  lastResult: Schema.optionalKey(PracticeResultSchema),
   message: Schema.optionalKey(Schema.String),
-  nextReviewAt: Schema.optionalKey(Schema.DateTimeUtcFromMillis),
-  queue: Schema.Array(PracticeQueueItemSchema),
+  nextItem: Schema.optionalKey(PracticeItemSchema),
+  selectionState: SessionSelectionStateSchema,
+  sessionId: Schema.optionalKey(IndexedDb.Domain.WordPracticeSessionId),
+  stats: PracticeSessionStatsSchema,
 });
 
 const SubmitPracticeInputSchema = Schema.Struct({
-  batchId: Schema.String,
-  batchPosition: Schema.Number,
-  submittedText: Schema.String,
-  wordText: Schema.String,
+  currentItem: Schema.optionalKey(PracticeItemSchema),
+  dueReviewCount: Schema.Number,
+  response: Schema.String,
+  selectionState: SessionSelectionStateSchema,
+  sessionId: Schema.optionalKey(IndexedDb.Domain.WordPracticeSessionId),
+  stats: PracticeSessionStatsSchema,
 });
 
-type WordEntry = typeof IndexedDb.Domain.WordEntry.Type;
-type WordPracticeBatch = typeof IndexedDb.Domain.WordPracticeBatch.Type;
-type WordPracticeSubmission =
-  typeof IndexedDb.Domain.WordPracticeSubmission.Type;
+type MemoryState = typeof IndexedDb.Domain.WordMemoryState.Type;
+type SessionSelectionState = typeof SessionSelectionStateSchema.Type;
+
+const InitialSelectionState = {
+  consecutiveLearningSelections: 0,
+  dueReviewSelectionsSinceForced: 0,
+  misses: [],
+  newWordCredit: 1,
+  recentWordIds: [],
+} as const satisfies SessionSelectionState;
+
+const InitialStats = {
+  attemptCount: 0,
+  correctCount: 0,
+  extraCount: 0,
+  newCount: 0,
+  scheduledCount: 0,
+} as const;
 
 const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
   DateTime.toEpochMillis(dateTime);
@@ -101,361 +112,163 @@ const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
 const _normalizePracticeText = ({ text }: { readonly text: string }) =>
   FuriganaText.normalizePlainText({ text });
 
-const _isCorrectPracticeAnswer = ({
-  submittedText,
-  wordText,
+const _memoryCardFromState = ({
+  state,
 }: {
-  readonly submittedText: string;
-  readonly wordText: string;
-}) =>
-  _normalizePracticeText({ text: submittedText }) ===
-  _normalizePracticeText({ text: wordText });
-
-const _submissionResult = ({
-  submission,
-}: {
-  readonly submission: WordPracticeSubmission;
-}): IndexedDb.Domain.WordPracticeResult =>
-  submission.result ??
-  (_isCorrectPracticeAnswer({
-    submittedText: submission.submittedText,
-    wordText: submission.wordText,
-  })
-    ? "correct"
-    : "incorrect");
-
-const _toWordPracticeSelectionSubmission = ({
-  submission,
-}: {
-  readonly submission: WordPracticeSubmission;
-}) => ({
-  result: _submissionResult({ submission }),
-  submittedAtMillis: _toEpochMillis({ dateTime: submission.submittedAt }),
-  wordText: submission.wordText,
+  readonly state: MemoryState;
+}): WordMemoryScheduler.WordMemoryCard => ({
+  difficulty: state.difficulty,
+  dueAtMillis: _toEpochMillis({ dateTime: state.dueAt }),
+  elapsedDays: state.elapsedDays,
+  lapses: state.lapses,
+  ...(state.lastReviewAt === undefined
+    ? {}
+    : {
+        lastReviewAtMillis: _toEpochMillis({ dateTime: state.lastReviewAt }),
+      }),
+  learningSteps: state.learningSteps,
+  phase: state.phase,
+  repetitions: state.repetitions,
+  scheduledDays: state.scheduledDays,
+  stability: state.stability,
 });
 
-const _toWordPracticeReviewSubmission = ({
-  submission,
+const _selectionCandidateFromState = ({
+  now,
+  state,
 }: {
-  readonly submission: WordPracticeSubmission;
-}): WordPracticeReview.WordPracticeReviewSubmission => ({
-  result: _submissionResult({ submission }),
-  submittedAtMillis: _toEpochMillis({ dateTime: submission.submittedAt }),
+  readonly now: number;
+  readonly state: MemoryState;
+}): WordSessionSelection.WordSessionSelectionCandidate => {
+  const card = _memoryCardFromState({ state });
+
+  return {
+    difficulty: state.difficulty,
+    dueAtMillis: card.dueAtMillis,
+    lastPracticedAtMillis: _toEpochMillis({
+      dateTime: state.lastPracticedAt,
+    }),
+    phase: state.phase,
+    retrievability: WordMemoryScheduler.retrievability({ card, now }),
+    scheduledDays: state.scheduledDays,
+    wordId: state.wordId,
+  };
+};
+
+const _toServiceSelectionState = ({
+  state,
+}: {
+  readonly state: SessionSelectionState;
+}): WordSessionSelection.WordSessionSelectionState => ({
+  consecutiveLearningSelections: state.consecutiveLearningSelections,
+  dueReviewSelectionsSinceForced: state.dueReviewSelectionsSinceForced,
+  missCounts: Object.fromEntries(
+    state.misses.map((miss) => [miss.wordId, miss.count])
+  ),
+  newWordCredit: state.newWordCredit,
+  recentWordIds: state.recentWordIds,
 });
 
-const _wordPracticeReviewSubmissions = ({
-  submissions,
-  wordText,
+const _fromServiceSelectionState = ({
+  state,
 }: {
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly wordText: string;
-}) =>
-  submissions
-    .filter((submission) => submission.wordText === wordText)
-    .map((submission) => _toWordPracticeReviewSubmission({ submission }));
+  readonly state: WordSessionSelection.WordSessionSelectionState;
+}): SessionSelectionState => ({
+  consecutiveLearningSelections: state.consecutiveLearningSelections,
+  dueReviewSelectionsSinceForced: state.dueReviewSelectionsSinceForced,
+  misses: Object.entries(state.missCounts).map(([wordId, count]) => ({
+    count,
+    wordId,
+  })),
+  newWordCredit: state.newWordCredit,
+  recentWordIds: state.recentWordIds,
+});
 
-const _buildWordPracticeReviewStates = ({
-  states,
-  submissions,
-  words,
+const _loadNextPracticeItem = ({
+  now,
+  selectionState,
 }: {
-  readonly states: readonly (typeof IndexedDb.Domain.WordPracticeState.Type)[];
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly words: readonly WordEntry[];
-}) => {
-  const persistedStates = states.map((state) => {
-    const nextReviewAtMillis =
-      state.nextReviewAt === undefined
-        ? undefined
-        : _toEpochMillis({ dateTime: state.nextReviewAt });
+  readonly now: number;
+  readonly selectionState: SessionSelectionState;
+}) =>
+  Effect.gen(function* () {
+    const store = yield* IndexedDb.Store.Store;
+    const storedPools = yield* store.loadWordSelectionPool({
+      limit: 64,
+      now,
+    });
+    const pools = {
+      activeLearningCount: storedPools.activeLearningCount,
+      dueLearning: storedPools.dueLearning.map((state) =>
+        _selectionCandidateFromState({ now, state })
+      ),
+      dueReview: storedPools.dueReview.map((state) =>
+        _selectionCandidateFromState({ now, state })
+      ),
+      earlyLearning: storedPools.earlyLearning.map((state) =>
+        _selectionCandidateFromState({ now, state })
+      ),
+      extra: storedPools.extra.map((state) =>
+        _selectionCandidateFromState({ now, state })
+      ),
+      newWords: storedPools.newWords.map((state) =>
+        _selectionCandidateFromState({ now, state })
+      ),
+    };
+    const serviceSelectionState = _toServiceSelectionState({
+      state: selectionState,
+    });
+    const randomValues = new Uint32Array(1);
+    crypto.getRandomValues(randomValues);
+    const selection = WordSessionSelection.selectNextWord({
+      now,
+      pools,
+      randomFraction: (randomValues[0] ?? 0) / 0x100000000,
+      state: serviceSelectionState,
+    });
+
+    if (selection === undefined) {
+      return {
+        dueReviewCount: storedPools.dueReviewCount,
+        selectionState,
+      };
+    }
+
+    const state = [
+      ...storedPools.dueLearning,
+      ...storedPools.dueReview,
+      ...storedPools.earlyLearning,
+      ...storedPools.extra,
+      ...storedPools.newWords,
+    ].find((candidate) => candidate.wordId === selection.candidate.wordId);
+    const word =
+      state === undefined ? undefined : yield* store.getWord(state.wordId);
+
+    if (state === undefined || word === undefined) {
+      return {
+        dueReviewCount: storedPools.dueReviewCount,
+        selectionState,
+      };
+    }
+
+    const nextSelectionState = WordSessionSelection.sessionStateAfterSelection({
+      selection,
+      state: serviceSelectionState,
+    });
 
     return {
-      level: state.level,
-      levelStartedAtMillis: _toEpochMillis({
-        dateTime: state.levelStartedAt,
-      }),
-      ...(nextReviewAtMillis === undefined ? {} : { nextReviewAtMillis }),
-      wordText: state.wordText,
-    };
-  });
-  const derivedStates = words.flatMap((word) => {
-    const persistedState = persistedStates.find(
-      (state) => state.wordText === word.text
-    );
-
-    if (persistedState !== undefined) {
-      return [];
-    }
-
-    const wordSubmissions = _wordPracticeReviewSubmissions({
-      submissions,
-      wordText: word.text,
-    });
-
-    if (!EffectArray.isReadonlyArrayNonEmpty(wordSubmissions)) {
-      return [];
-    }
-
-    return [
-      {
-        ...WordPracticeReview.stateFromSubmissions({
-          submissions: wordSubmissions,
-        }),
-        wordText: word.text,
-      },
-    ];
-  });
-
-  return [...persistedStates, ...derivedStates];
-};
-
-const _nextReviewAtForWords = ({
-  now,
-  states,
-  words,
-}: {
-  readonly now: number;
-  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
-  readonly words: readonly WordEntry[];
-}) => {
-  const nextReviewAtMillis = WordPracticeReview.nextReviewAtMillisForWordTexts({
-    now,
-    states,
-    wordTexts: words.map((word) => word.text),
-  });
-
-  return nextReviewAtMillis === undefined
-    ? undefined
-    : DateTime.makeUnsafe(nextReviewAtMillis);
-};
-
-const _buildWordPracticeWordOrder = ({
-  batches,
-  now,
-  states,
-  submissions,
-  words,
-}: {
-  readonly batches: readonly WordPracticeBatch[];
-  readonly now: number;
-  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly words: readonly WordEntry[];
-}) =>
-  WordPracticeSelection.buildWordOrder({
-    batches: batches.map((batch) => ({
-      batchNumber: batch.batchNumber,
-      startedAtMillis: _toEpochMillis({ dateTime: batch.startedAt }),
-      wordOrder: batch.wordOrder,
-    })),
-    now,
-    submissions: submissions.map((submission) =>
-      _toWordPracticeSelectionSubmission({ submission })
-    ),
-    words: words.map((word) => {
-      const state = WordPracticeReview.reviewStateForWord({
-        now,
-        states,
-        wordText: word.text,
-      });
-
-      return {
-        ...(state.nextReviewAtMillis === undefined
-          ? {}
-          : { nextReviewAtMillis: state.nextReviewAtMillis }),
-        text: word.text,
-      };
-    }),
-  });
-
-const _makePracticeBatch = ({
-  batchNumber,
-  startedAt,
-  wordOrder,
-}: {
-  readonly batchNumber: number;
-  readonly startedAt: number;
-  readonly wordOrder: readonly string[];
-}) =>
-  Schema.decodeEffect(IndexedDb.Domain.WordPracticeBatch)({
-    batchNumber,
-    id: crypto.randomUUID(),
-    startedAt,
-    wordOrder,
-  });
-
-const _nextBatchNumber = ({
-  batches,
-}: {
-  readonly batches: readonly WordPracticeBatch[];
-}) =>
-  batches.reduce(
-    (highestBatchNumber, batch) =>
-      Math.max(highestBatchNumber, batch.batchNumber),
-    0
-  ) + 1;
-
-const _activePracticeBatch = ({
-  batches,
-}: {
-  readonly batches: readonly WordPracticeBatch[];
-}) =>
-  batches
-    .filter((batch) => batch.completedAt === undefined)
-    .sort((left, right) => right.batchNumber - left.batchNumber)[0];
-
-const _completePracticeBatch = ({
-  batch,
-  completedAt,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly completedAt: number;
-}) =>
-  Schema.decodeEffect(IndexedDb.Domain.WordPracticeBatch)({
-    ...batch,
-    completedAt,
-    startedAt: _toEpochMillis({ dateTime: batch.startedAt }),
-  });
-
-const _batchSubmissions = ({
-  batch,
-  submissions,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly submissions: readonly WordPracticeSubmission[];
-}) => submissions.filter((submission) => submission.batchId === batch.id);
-
-const _buildPracticeQueue = ({
-  batch,
-  now,
-  states,
-  submissions,
-  words,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly now: number;
-  readonly states: readonly WordPracticeReview.WordPracticeReviewWordState[];
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly words: readonly WordEntry[];
-}) => {
-  const submissionsForBatch = _batchSubmissions({ batch, submissions });
-  const submittedWordTexts = submissionsForBatch.map(
-    (submission) => submission.wordText
-  );
-
-  return batch.wordOrder.flatMap((wordText, batchPosition) => {
-    if (submittedWordTexts.includes(wordText)) {
-      return [];
-    }
-
-    const word = words.find((entry) => entry.text === wordText);
-
-    if (word === undefined) {
-      return [];
-    }
-
-    const submissionsForWord = submissions
-      .filter((submission) => submission.wordText === wordText)
-      .map((submission) => _toWordPracticeSelectionSubmission({ submission }));
-    const reviewSubmissions = submissions
-      .filter((submission) => submission.wordText === wordText)
-      .map((submission) => _toWordPracticeReviewSubmission({ submission }));
-    const reviewState = WordPracticeReview.reviewStateForWord({
-      now,
-      states,
-      wordText,
-    });
-    const reviewProgress = WordPracticeReview.correctProgressAtLevel({
-      state: reviewState,
-      submissions: reviewSubmissions,
-    });
-    const reviewProgressTarget = WordPracticeReview.reviewLevelRule({
-      level: reviewState.level,
-    }).correctSubmissionTarget;
-
-    return [
-      {
-        batchId: batch.id,
-        batchNumber: batch.batchNumber,
-        batchPosition,
-        correctStreak: WordPracticeSelection.correctStreak({
-          submissions: submissionsForWord,
-        }),
-        incorrectStreak: WordPracticeSelection.incorrectStreak({
-          submissions: submissionsForWord,
-        }),
-        priorityScore: WordPracticeSelection.priorityScore({
-          submissions: submissionsForWord,
-        }),
-        reviewLevel: reviewState.level,
-        reviewProgress,
-        reviewProgressTarget,
+      dueReviewCount: storedPools.dueReviewCount,
+      item: {
+        kind: selection.kind,
+        source: selection.source,
+        state,
         word,
       },
-    ];
+      selectionState: _fromServiceSelectionState({
+        state: nextSelectionState,
+      }),
+    };
   });
-};
-
-const _batchTotalCount = ({
-  batch,
-  words,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly words: readonly WordEntry[];
-}) =>
-  batch.wordOrder.filter((wordText) =>
-    words.some((word) => word.text === wordText)
-  ).length;
-
-const _buildBatchSummary = ({
-  batch,
-  queue,
-  words,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly queue: readonly (typeof PracticeQueueItemSchema.Type)[];
-  readonly words: readonly WordEntry[];
-}) => {
-  const totalCount = _batchTotalCount({ batch, words });
-
-  return {
-    batchNumber: batch.batchNumber,
-    completedCount: totalCount - queue.length,
-    id: batch.id,
-    totalCount,
-  };
-};
-
-const _buildCompletedBatchSummary = ({
-  batch,
-  submissions,
-  words,
-}: {
-  readonly batch: WordPracticeBatch;
-  readonly submissions: readonly WordPracticeSubmission[];
-  readonly words: readonly WordEntry[];
-}) => {
-  const completedBatchSubmissions = _batchSubmissions({
-    batch,
-    submissions,
-  });
-  const correctCount = completedBatchSubmissions.filter(
-    (completedBatchSubmission) =>
-      _submissionResult({
-        submission: completedBatchSubmission,
-      }) === "correct"
-  ).length;
-
-  return {
-    batchNumber: batch.batchNumber,
-    correctCount,
-    incorrectCount: completedBatchSubmissions.length - correctCount,
-    totalCount: _batchTotalCount({
-      batch,
-      words,
-    }),
-  };
-};
 
 export const makePracticeOverviewMachine = ({
   runtime,
@@ -470,232 +283,29 @@ export const makePracticeOverviewMachine = ({
           Schema.Struct({ response: Schema.String })
         ),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
-        startNextBatch: Schema.toStandardSchemaV1(Schema.Void),
         submit: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
     actorSources: {
-      loadPracticeOverview: createAsyncLogic({
+      loadPracticeSession: createAsyncLogic({
         schemas: {
           output: Schema.toStandardSchemaV1(PracticeSessionDataSchema),
         },
         run: () =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
-              const words = yield* store.listWordEntries();
-              const submissions = yield* store.listWordPracticeSubmissions();
-              const batches = yield* store.listWordPracticeBatches();
-
-              if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
-                return {
-                  queue: [],
-                };
-              }
-
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const storedStates = yield* store.listWordPracticeStates();
-              const states = _buildWordPracticeReviewStates({
-                states: storedStates,
-                submissions,
-                words,
-              });
-              const existingActiveBatch = _activePracticeBatch({ batches });
-
-              if (existingActiveBatch === undefined) {
-                const latestCompletedBatch = batches.find(
-                  (batch) => batch.completedAt !== undefined
-                );
-
-                if (latestCompletedBatch !== undefined) {
-                  return {
-                    batch: _buildBatchSummary({
-                      batch: latestCompletedBatch,
-                      queue: [],
-                      words,
-                    }),
-                    completedBatch: _buildCompletedBatchSummary({
-                      batch: latestCompletedBatch,
-                      submissions,
-                      words,
-                    }),
-                    queue: [],
-                  };
-                }
-              }
-
-              const batch =
-                existingActiveBatch === undefined
-                  ? yield* Effect.gen(function* () {
-                      const wordOrder = _buildWordPracticeWordOrder({
-                        batches,
-                        now,
-                        states,
-                        submissions,
-                        words,
-                      });
-
-                      if (!EffectArray.isReadonlyArrayNonEmpty(wordOrder)) {
-                        return undefined;
-                      }
-
-                      return yield* _makePracticeBatch({
-                        batchNumber: _nextBatchNumber({ batches }),
-                        startedAt: now,
-                        wordOrder,
-                      });
-                    })
-                  : existingActiveBatch;
-
-              if (batch === undefined) {
-                return {
-                  nextReviewAt: _nextReviewAtForWords({
-                    now,
-                    states,
-                    words,
-                  }),
-                  queue: [],
-                };
-              }
-
-              if (existingActiveBatch === undefined) {
-                yield* store.insertWordPracticeBatch(batch);
-              }
-
-              const queue = _buildPracticeQueue({
-                batch,
+              const selection = yield* _loadNextPracticeItem({
                 now,
-                states,
-                submissions,
-                words,
+                selectionState: InitialSelectionState,
               });
-
-              if (!EffectArray.isReadonlyArrayNonEmpty(queue)) {
-                const completedBatch = yield* _completePracticeBatch({
-                  batch,
-                  completedAt: now,
-                });
-
-                yield* store.upsertWordPracticeBatch(completedBatch);
-
-                return {
-                  batch: _buildBatchSummary({
-                    batch: completedBatch,
-                    queue: [],
-                    words,
-                  }),
-                  completedBatch: _buildCompletedBatchSummary({
-                    batch: completedBatch,
-                    submissions,
-                    words,
-                  }),
-                  nextReviewAt: _nextReviewAtForWords({
-                    now,
-                    states,
-                    words,
-                  }),
-                  queue: [],
-                };
-              }
+              const sessionId = yield* Schema.decodeEffect(
+                IndexedDb.Domain.WordPracticeSessionId
+              )(crypto.randomUUID());
 
               return {
-                batch: _buildBatchSummary({
-                  batch,
-                  queue,
-                  words,
-                }),
-                queue,
-              };
-            })
-          ),
-      }),
-      refreshPracticeBatch: createAsyncLogic({
-        schemas: {
-          output: Schema.toStandardSchemaV1(PracticeSessionDataSchema),
-        },
-        run: () =>
-          runtime.runPromise(
-            Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
-              const words = yield* store.listWordEntries();
-              const submissions = yield* store.listWordPracticeSubmissions();
-              const batches = yield* store.listWordPracticeBatches();
-
-              if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
-                return {
-                  queue: [],
-                };
-              }
-
-              const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const storedStates = yield* store.listWordPracticeStates();
-              const states = _buildWordPracticeReviewStates({
-                states: storedStates,
-                submissions,
-                words,
-              });
-              const activeBatch = _activePracticeBatch({ batches });
-              const wordOrder = _buildWordPracticeWordOrder({
-                batches,
-                now,
-                states,
-                submissions,
-                words,
-              });
-
-              if (!EffectArray.isReadonlyArrayNonEmpty(wordOrder)) {
-                if (activeBatch !== undefined) {
-                  const completedBatch = yield* _completePracticeBatch({
-                    batch: activeBatch,
-                    completedAt: now,
-                  });
-
-                  yield* store.upsertWordPracticeBatch(completedBatch);
-                }
-
-                return {
-                  nextReviewAt: _nextReviewAtForWords({
-                    now,
-                    states,
-                    words,
-                  }),
-                  queue: [],
-                };
-              }
-
-              const nextBatch = yield* _makePracticeBatch({
-                batchNumber: _nextBatchNumber({ batches }),
-                startedAt: now,
-                wordOrder,
-              });
-
-              if (activeBatch === undefined) {
-                yield* store.insertWordPracticeBatch(nextBatch);
-              } else {
-                const completedBatch = yield* _completePracticeBatch({
-                  batch: activeBatch,
-                  completedAt: now,
-                });
-
-                yield* store.upsertWordPracticeBatch(completedBatch);
-                yield* store.insertWordPracticeBatch(nextBatch);
-              }
-
-              const nextQueue = _buildPracticeQueue({
-                batch: nextBatch,
-                now,
-                states,
-                submissions,
-                words,
-              });
-
-              return {
-                batch: _buildBatchSummary({
-                  batch: nextBatch,
-                  queue: nextQueue,
-                  words,
-                }),
-                queue: nextQueue,
+                ...selection,
+                sessionId,
               };
             })
           ),
@@ -708,195 +318,147 @@ export const makePracticeOverviewMachine = ({
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const submittedText = input.submittedText.trim();
-              const wordText = input.wordText.trim();
-              const batchId = input.batchId.trim();
+              const store = yield* IndexedDb.Store.Store;
+              const currentItem = input.currentItem;
+              const sessionId = input.sessionId;
 
-              if (wordText === "" || batchId === "") {
+              if (currentItem === undefined || sessionId === undefined) {
                 return yield* Effect.fail(
                   new Error("Could not find a word to practice.")
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
-              const words = yield* store.listWordEntries();
-              const word = words.find((entry) => entry.text === wordText);
-
-              if (word === undefined) {
-                return yield* Effect.fail(
-                  new Error("Could not find that word in the library.")
-                );
-              }
-
-              const batches = yield* store.listWordPracticeBatches();
-              const batch = batches.find(
-                (practiceBatch) => practiceBatch.id === batchId
-              );
-
-              if (batch === undefined) {
-                return yield* Effect.fail(
-                  new Error("Could not find the current practice batch.")
-                );
-              }
-
-              const submittedAt = DateTime.toEpochMillis(yield* DateTime.now);
-              const isCorrect = _isCorrectPracticeAnswer({
-                submittedText,
-                wordText: word.text,
-              });
+              const reviewedAt = DateTime.toEpochMillis(yield* DateTime.now);
+              const submittedText = input.response.trim();
+              const isCorrect =
+                _normalizePracticeText({ text: submittedText }) ===
+                _normalizePracticeText({ text: currentItem.word.text });
               const result = isCorrect ? "correct" : "incorrect";
-              const previousSubmissions =
-                yield* store.listWordPracticeSubmissions();
-              const storedStates = yield* store.listWordPracticeStates();
-              const states = _buildWordPracticeReviewStates({
-                states: storedStates,
-                submissions: previousSubmissions,
-                words,
+              const previousCard = _memoryCardFromState({
+                state: currentItem.state,
               });
-              const previousReviewState = WordPracticeReview.reviewStateForWord(
-                {
-                  now: submittedAt,
-                  states,
-                  wordText: word.text,
-                }
-              );
-              const wordSubmissions = _wordPracticeReviewSubmissions({
-                submissions: previousSubmissions,
-                wordText: word.text,
-              });
-              const nextReviewState = WordPracticeReview.applyPracticeResult({
-                now: submittedAt,
+              const transition = WordMemoryScheduler.applyPracticeResult({
+                card: previousCard,
+                kind: currentItem.kind,
+                now: reviewedAt,
                 result,
-                state: previousReviewState,
-                submissions: wordSubmissions,
               });
-              const nextReviewWordState = {
-                ...nextReviewState,
-                wordText: word.text,
-              };
-              const wordPracticeState = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordPracticeState
+              const nextState = yield* Schema.decodeEffect(
+                IndexedDb.Domain.WordMemoryState
               )({
-                level: nextReviewWordState.level,
-                levelStartedAt: nextReviewWordState.levelStartedAtMillis,
-                ...(nextReviewWordState.nextReviewAtMillis === undefined
+                wordId: currentItem.state.wordId,
+                phase: transition.card.phase,
+                dueAt: transition.card.dueAtMillis,
+                stability: transition.card.stability,
+                difficulty: transition.card.difficulty,
+                elapsedDays: transition.card.elapsedDays,
+                scheduledDays: transition.card.scheduledDays,
+                learningSteps: transition.card.learningSteps,
+                repetitions: transition.card.repetitions,
+                lapses: transition.card.lapses,
+                attemptCount: currentItem.state.attemptCount + 1,
+                correctCount:
+                  currentItem.state.correctCount + (isCorrect ? 1 : 0),
+                incorrectCount:
+                  currentItem.state.incorrectCount + (isCorrect ? 0 : 1),
+                ...(transition.card.lastReviewAtMillis === undefined
                   ? {}
-                  : { nextReviewAt: nextReviewWordState.nextReviewAtMillis }),
-                updatedAt: submittedAt,
-                wordText: nextReviewWordState.wordText,
+                  : { lastReviewAt: transition.card.lastReviewAtMillis }),
+                lastPracticedAt: reviewedAt,
+                schedulerVersion: WordMemoryScheduler.SchedulerVersion,
+                createdAt: _toEpochMillis({
+                  dateTime: currentItem.state.createdAt,
+                }),
+                updatedAt: reviewedAt,
               });
-              const submission = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordPracticeSubmission
+              const event = yield* Schema.decodeEffect(
+                IndexedDb.Domain.WordPracticeEvent
               )({
-                batchId: batch.id,
-                batchPosition: input.batchPosition,
                 id: crypto.randomUUID(),
-                ...(nextReviewState.nextReviewAtMillis === undefined
-                  ? {}
-                  : { nextReviewAt: nextReviewState.nextReviewAtMillis }),
-                result,
-                submittedAt,
+                wordId: currentItem.word.id,
                 submittedText,
-                wordText: word.text,
-              });
-              const submissions = [...previousSubmissions, submission];
-              const statesAfterSubmission = [
-                ...states.filter((state) => state.wordText !== word.text),
-                nextReviewWordState,
-              ];
-              const reviewSubmissionsAfterSubmission = submissions
-                .filter(
-                  (nextSubmission) => nextSubmission.wordText === word.text
-                )
-                .map((nextSubmission) =>
-                  _toWordPracticeReviewSubmission({
-                    submission: nextSubmission,
-                  })
-                );
-              const reviewProgress = WordPracticeReview.correctProgressAtLevel({
-                state: nextReviewState,
-                submissions: reviewSubmissionsAfterSubmission,
-              });
-              const reviewProgressTarget = WordPracticeReview.reviewLevelRule({
-                level: nextReviewState.level,
-              }).correctSubmissionTarget;
-              const queueAfterSubmission = _buildPracticeQueue({
-                batch,
-                now: submittedAt,
-                states: statesAfterSubmission,
-                submissions,
-                words,
+                reviewedAt,
+                result,
+                kind: currentItem.kind,
+                source: currentItem.source,
+                previousDueAt: transition.previousDueAtMillis,
+                nextDueAt: transition.card.dueAtMillis,
+                changedSchedule: transition.changedSchedule,
+                phaseAfter: transition.card.phase,
+                stabilityAfter: transition.card.stability,
+                difficultyAfter: transition.card.difficulty,
+                schedulerVersion: WordMemoryScheduler.SchedulerVersion,
+                sessionId,
+                sessionPosition: input.stats.attemptCount,
               });
 
-              if (!EffectArray.isReadonlyArrayNonEmpty(queueAfterSubmission)) {
-                const completedBatch = yield* _completePracticeBatch({
-                  batch,
-                  completedAt: submittedAt,
-                });
-                const completedBatchSummary = _buildCompletedBatchSummary({
-                  batch: completedBatch,
-                  submissions,
-                  words,
-                });
+              yield* store.savePracticeResult({ event, state: nextState });
 
-                yield* store.saveWordPracticeSubmissionStateAndBatches({
-                  batches: [completedBatch],
-                  state: wordPracticeState,
-                  submission,
-                });
-
-                return {
-                  batch: _buildBatchSummary({
-                    batch: completedBatch,
-                    queue: [],
-                    words,
+              const selectionStateAfterResult =
+                WordSessionSelection.sessionStateAfterResult({
+                  dueReviewCount: input.dueReviewCount,
+                  result,
+                  state: _toServiceSelectionState({
+                    state: input.selectionState,
                   }),
-                  batchCompleted: completedBatchSummary,
-                  batchNumber: batch.batchNumber,
-                  isCorrect,
-                  ...(wordPracticeState.nextReviewAt === undefined
-                    ? {}
-                    : { nextReviewAt: wordPracticeState.nextReviewAt }),
-                  previousReviewLevel: previousReviewState.level,
-                  queue: [],
-                  reviewLevel: nextReviewState.level,
-                  reviewProgress,
-                  reviewProgressTarget,
-                  ...(word.description === undefined
-                    ? {}
-                    : { wordDescription: word.description }),
-                  wordText: word.text,
-                  wordTranslation: word.translation,
-                };
-              }
-
-              yield* store.saveWordPracticeSubmissionStateAndBatches({
-                batches: [],
-                state: wordPracticeState,
-                submission,
+                  wordId: currentItem.word.id,
+                });
+              const fallbackSelectionState = _fromServiceSelectionState({
+                state: selectionStateAfterResult,
               });
+              const nextSelection = yield* _loadNextPracticeItem({
+                now: reviewedAt,
+                selectionState: fallbackSelectionState,
+              }).pipe(
+                Effect.map((selection) => ({
+                  ...selection,
+                  selectionFailed: false as const,
+                })),
+                Effect.orElseSucceed(() => ({
+                  dueReviewCount: input.dueReviewCount,
+                  item: undefined,
+                  selectionFailed: true as const,
+                  selectionState: fallbackSelectionState,
+                }))
+              );
+              const stats = {
+                attemptCount: input.stats.attemptCount + 1,
+                correctCount: input.stats.correctCount + (isCorrect ? 1 : 0),
+                extraCount:
+                  input.stats.extraCount +
+                  (currentItem.kind === "extra" ? 1 : 0),
+                newCount:
+                  input.stats.newCount + (currentItem.source === "new" ? 1 : 0),
+                scheduledCount:
+                  input.stats.scheduledCount +
+                  (currentItem.kind === "scheduled" ? 1 : 0),
+              };
 
               return {
-                batch: _buildBatchSummary({
-                  batch,
-                  queue: queueAfterSubmission,
-                  words,
-                }),
-                batchNumber: batch.batchNumber,
-                isCorrect,
-                ...(wordPracticeState.nextReviewAt === undefined
-                  ? {}
-                  : { nextReviewAt: wordPracticeState.nextReviewAt }),
-                previousReviewLevel: previousReviewState.level,
-                queue: queueAfterSubmission,
-                reviewLevel: nextReviewState.level,
-                reviewProgress,
-                reviewProgressTarget,
-                ...(word.description === undefined
-                  ? {}
-                  : { wordDescription: word.description }),
-                wordText: word.text,
-                wordTranslation: word.translation,
+                dueReviewCount: nextSelection.dueReviewCount,
+                ...(nextSelection.selectionFailed
+                  ? {
+                      message:
+                        "Your answer was saved, but the next word could not be loaded.",
+                    }
+                  : {}),
+                nextItem: nextSelection.item,
+                result: {
+                  changedSchedule: transition.changedSchedule,
+                  difficulty: transition.card.difficulty,
+                  isCorrect,
+                  kind: currentItem.kind,
+                  nextReviewAt: DateTime.makeUnsafe(
+                    transition.card.dueAtMillis
+                  ),
+                  phaseAfter: transition.card.phase,
+                  phaseBefore: currentItem.state.phase,
+                  source: currentItem.source,
+                  stability: transition.card.stability,
+                  word: currentItem.word,
+                },
+                selectionState: nextSelection.selectionState,
+                stats,
               };
             })
           ),
@@ -905,25 +467,27 @@ export const makePracticeOverviewMachine = ({
   }).createMachine({
     context: {
       currentResponse: "",
-      queue: [],
+      dueReviewCount: 0,
+      selectionState: InitialSelectionState,
+      stats: InitialStats,
     },
     initial: "Loading",
     states: {
       Loading: {
         invoke: {
-          src: "loadPracticeOverview",
+          src: "loadPracticeSession",
           onDone: ({ event }) => ({
-            target:
-              event.output.completedBatch === undefined
-                ? "Ready"
-                : "BatchFinished",
+            target: event.output.item === undefined ? "EmptyLibrary" : "Ready",
             context: {
-              batch: event.output.batch,
-              completedBatch: event.output.completedBatch,
+              currentItem: event.output.item,
+              currentResponse: "",
+              dueReviewCount: event.output.dueReviewCount,
               lastResult: undefined,
               message: undefined,
-              nextReviewAt: event.output.nextReviewAt,
-              queue: event.output.queue,
+              nextItem: undefined,
+              selectionState: event.output.selectionState,
+              sessionId: event.output.sessionId,
+              stats: InitialStats,
             },
           }),
           onError: ({ event }) => ({
@@ -946,70 +510,35 @@ export const makePracticeOverviewMachine = ({
             },
           }),
           refresh: {
-            target: "RefreshingBatch",
+            target: "Loading",
           },
           submit: {
             target: "Submitting",
           },
         },
       },
-      RefreshingBatch: {
-        invoke: {
-          src: "refreshPracticeBatch",
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              batch: event.output.batch,
-              completedBatch: undefined,
-              currentResponse: "",
-              lastResult: undefined,
-              message: undefined,
-              nextReviewAt: event.output.nextReviewAt,
-              queue: event.output.queue,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not refresh the practice batch.",
-            },
-          }),
-        },
-      },
       Submitting: {
         invoke: {
           src: "submitPracticeAnswer",
           input: ({ context }) => ({
-            batchId: context.queue[0]?.batchId ?? "",
-            batchPosition: context.queue[0]?.batchPosition ?? 0,
-            submittedText: context.currentResponse,
-            wordText: context.queue[0]?.word.text ?? "",
+            currentItem: context.currentItem,
+            dueReviewCount: context.dueReviewCount,
+            response: context.currentResponse,
+            selectionState: context.selectionState,
+            sessionId: context.sessionId,
+            stats: context.stats,
           }),
           onDone: ({ event }) => ({
             target: "Revealed",
             context: {
-              batch: event.output.batch,
-              completedBatch: event.output.batchCompleted,
+              currentItem: undefined,
               currentResponse: "",
-              lastResult: {
-                batchCompleted: event.output.batchCompleted,
-                batchNumber: event.output.batchNumber,
-                isCorrect: event.output.isCorrect,
-                nextReviewAt: event.output.nextReviewAt,
-                previousReviewLevel: event.output.previousReviewLevel,
-                reviewLevel: event.output.reviewLevel,
-                reviewProgress: event.output.reviewProgress,
-                reviewProgressTarget: event.output.reviewProgressTarget,
-                wordDescription: event.output.wordDescription,
-                wordText: event.output.wordText,
-                wordTranslation: event.output.wordTranslation,
-              },
-              message: undefined,
-              nextReviewAt: undefined,
-              queue: event.output.queue,
+              dueReviewCount: event.output.dueReviewCount,
+              lastResult: event.output.result,
+              message: event.output.message,
+              nextItem: event.output.nextItem,
+              selectionState: event.output.selectionState,
+              stats: event.output.stats,
             },
           }),
           onError: ({ event }) => ({
@@ -1025,73 +554,36 @@ export const makePracticeOverviewMachine = ({
       },
       Revealed: {
         on: {
-          startNextBatch: {
-            target: "StartingBatch",
-          },
           refresh: {
-            target: "RefreshingBatch",
+            target: "Loading",
           },
           submit: ({ context }) =>
-            context.completedBatch === undefined
+            context.nextItem === undefined
               ? {
-                  target: "Ready",
+                  target: "Loading",
                   context: {
                     lastResult: undefined,
-                    message: undefined,
-                    nextReviewAt: undefined,
                   },
                 }
               : {
-                  target: "BatchFinished",
+                  target: "Ready",
                   context: {
-                    message: undefined,
+                    currentItem: context.nextItem,
+                    lastResult: undefined,
+                    nextItem: undefined,
                   },
                 },
         },
       },
-      BatchFinished: {
+      EmptyLibrary: {
         on: {
           refresh: {
-            target: "StartingBatch",
+            target: "Loading",
           },
-          startNextBatch: {
-            target: "StartingBatch",
-          },
-        },
-      },
-      StartingBatch: {
-        invoke: {
-          src: "refreshPracticeBatch",
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              batch: event.output.batch,
-              completedBatch: undefined,
-              currentResponse: "",
-              lastResult: undefined,
-              message: undefined,
-              nextReviewAt: event.output.nextReviewAt,
-              queue: event.output.queue,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "BatchFinished",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not start the next practice batch.",
-            },
-          }),
         },
       },
       Failure: {
         on: {
-          changeResponse: ({ event }) => ({
-            context: {
-              currentResponse: event.response,
-            },
-          }),
           refresh: {
             target: "Loading",
           },

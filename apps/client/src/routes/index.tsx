@@ -5,7 +5,14 @@ import { WordPracticeHistoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import { Array as EffectArray } from "effect";
-import { CircleCheck, CircleX, RefreshCw, Search, X } from "lucide-react";
+import {
+  CircleCheck,
+  CircleX,
+  LoaderCircle,
+  RefreshCw,
+  Search,
+  X,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import type { Actor } from "xstate";
 
@@ -18,48 +25,24 @@ const wordPracticeHistoryMachine =
     runtime: RuntimeClient,
   });
 
-const VisibleAttemptLimit = 8;
-
 const dialogBackdropClassName = "fixed inset-0 bg-paper/70 backdrop-blur-sm";
-
 const dialogPopupClassName =
   "fixed left-1/2 top-1/2 grid h-[min(calc(100svh-1rem),44rem)] w-[min(calc(100vw-1rem),44rem)] -translate-x-1/2 -translate-y-1/2 grid-rows-[auto_minmax(0,1fr)] gap-4 overflow-hidden rounded-md border border-line bg-panel p-4 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none sm:h-[min(calc(100svh-2rem),44rem)] sm:w-[min(calc(100vw-2rem),44rem)] sm:gap-5 sm:p-5";
-
 const dialogIconButtonClassName =
   "inline-flex size-9 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky";
 
 type WordPracticeHistoryActor = Actor<typeof wordPracticeHistoryMachine>;
-type WordHistorySummary = ReturnType<
+type WordHistoryAttempt = ReturnType<
   WordPracticeHistoryActor["getSnapshot"]
->["context"]["summaries"][number];
-type WordHistoryAttempt = WordHistorySummary["attempts"][number];
-type SelectionPriority = {
-  readonly className: string;
-  readonly label: "Low" | "Mid" | "High" | "Top";
-};
-type SelectionPriorityScale = {
-  readonly maxWeight: number;
-  readonly minWeight: number;
-};
+>["context"]["selectedAttempts"][number];
 
-const SelectionPriorities = [
-  {
-    className: "text-ink-muted",
-    label: "Low",
-  },
-  {
-    className: "text-sky",
-    label: "Mid",
-  },
-  {
-    className: "text-teal",
-    label: "High",
-  },
-  {
-    className: "text-gold",
-    label: "Top",
-  },
-] as const satisfies readonly SelectionPriority[];
+const StatusLabels = {
+  due: "Due",
+  learning: "Learning",
+  new: "New",
+  relearning: "Relearning",
+  scheduled: "Scheduled",
+} as const;
 
 export const Route = createFileRoute("/")({
   component: WordHistoryRoute,
@@ -67,18 +50,22 @@ export const Route = createFileRoute("/")({
 
 function WordHistoryRoute() {
   const [snapshot, , actor] = useMachine(wordPracticeHistoryMachine);
+  const isFailure = snapshot.value === "Failure";
+  const isLoading = snapshot.value === "Loading";
+  const isReady =
+    snapshot.value === "Ready" || snapshot.value === "LoadingAttempts";
 
   return (
     <div className="flex flex-col gap-6">
       <section className="flex justify-center">
         <WordHistorySearch actor={actor} />
       </section>
-      {snapshot.matches("Loading") ? (
+      {isLoading ? (
         <div className="py-10 text-center text-sm font-bold text-ink-muted">
           Loading word history
         </div>
       ) : null}
-      {snapshot.matches("Failure") ? (
+      {isFailure ? (
         <div className="flex items-center justify-between gap-4 py-4 text-sm font-bold text-accent">
           <span>{snapshot.context.message}</span>
           <Button
@@ -93,7 +80,12 @@ function WordHistoryRoute() {
           </Button>
         </div>
       ) : null}
-      {snapshot.matches("Ready") ? <WordHistoryList actor={actor} /> : null}
+      {isReady ? (
+        <>
+          <WordHistoryList actor={actor} />
+          <WordHistoryDialog actor={actor} />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -120,10 +112,6 @@ function WordHistorySearch({
     query.trim() === ""
       ? _formatWordCount({ count: wordCount })
       : `${_formatWordCount({ count: matchingWordCount })} of ${_formatWordCount({ count: wordCount })}`;
-  const attemptCountLabel = `${todayAttemptCount} ${
-    todayAttemptCount === 1 ? "attempt" : "attempts"
-  }`;
-  const summaryLabel = `${wordCountLabel} ・ ${attemptCountLabel} today`;
 
   return (
     <div className="grid w-full max-w-xl gap-2">
@@ -135,20 +123,20 @@ function WordHistorySearch({
           strokeWidth={2.5}
         />
         <Input
-          aria-label="Search word attempts"
+          aria-label="Search word history"
           autoComplete="off"
           className="h-12 w-full rounded-md border border-line bg-field pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted"
           placeholder="Search words"
           type="search"
           value={query}
           onValueChange={(nextQuery) => {
-            actor.trigger.changeQuery({
-              query: nextQuery,
-            });
+            actor.trigger.changeQuery({ query: nextQuery });
           }}
         />
       </label>
-      <p className="px-1 text-sm font-black text-ink-muted">{summaryLabel}</p>
+      <p className="px-1 text-sm font-black text-ink-muted">
+        {wordCountLabel} ・ {todayAttemptCount} attempts today
+      </p>
     </div>
   );
 }
@@ -162,24 +150,11 @@ function WordHistoryList({
     actor,
     (snapshot) => snapshot.context.matchingSummaries
   );
-  const allSummaries = useSelector(
+  const visibleSummaryCount = useSelector(
     actor,
-    (snapshot) => snapshot.context.summaries
+    (snapshot) => snapshot.context.visibleSummaryCount
   );
-  const selectionWeights = allSummaries.map(
-    (summary) => summary.selectionWeight
-  );
-  const selectionPriorityScale = EffectArray.isReadonlyArrayNonEmpty(
-    allSummaries
-  )
-    ? {
-        maxWeight: Math.max(...selectionWeights),
-        minWeight: Math.min(...selectionWeights),
-      }
-    : {
-        maxWeight: 0,
-        minWeight: 0,
-      };
+  const visibleSummaries = summaries.slice(0, visibleSummaryCount);
 
   if (!EffectArray.isReadonlyArrayNonEmpty(summaries)) {
     return (
@@ -193,196 +168,186 @@ function WordHistoryList({
   }
 
   return (
-    <section className="divide-y divide-line">
-      {summaries.map((summary) => (
-        <WordHistoryDetailsDialog
-          key={summary.word.text}
-          selectionPriorityScale={selectionPriorityScale}
-          summary={summary}
-        />
-      ))}
-    </section>
+    <div>
+      <section className="divide-y divide-line">
+        {visibleSummaries.map((summary) => (
+          <button
+            key={summary.word.id}
+            type="button"
+            className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-4 text-left transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+            onClick={() => {
+              actor.trigger.selectWord({ wordId: summary.word.id });
+            }}
+          >
+            <div className="min-w-0">
+              <span className="wrap-break-word text-xl font-black leading-tight">
+                <WordText text={summary.word.text} />
+              </span>
+              <p className="mt-1 text-xs font-bold text-ink-muted">
+                {summary.attemptCount} attempts · {summary.accuracy}% correct
+              </p>
+            </div>
+            <div className="text-right">
+              <p
+                className={`text-sm font-black ${summary.isDue ? "text-gold" : "text-ink"}`}
+              >
+                {StatusLabels[summary.status]}
+              </p>
+              <p className="mt-1 text-xs font-bold text-ink-muted">
+                {Math.round(summary.retrievability * 100)}% recall
+              </p>
+            </div>
+          </button>
+        ))}
+      </section>
+      {visibleSummaries.length < summaries.length ? (
+        <div className="flex justify-center py-6">
+          <Button
+            type="button"
+            className="h-10 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+            onClick={() => {
+              actor.trigger.loadMore();
+            }}
+          >
+            Load more
+          </Button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
-function WordHistoryDetailsDialog({
-  selectionPriorityScale,
-  summary,
+function WordHistoryDialog({
+  actor,
 }: {
-  readonly selectionPriorityScale: SelectionPriorityScale;
-  readonly summary: WordHistorySummary;
+  readonly actor: WordPracticeHistoryActor;
 }) {
-  const streakLabel =
-    summary.correctStreak > 0
-      ? `${summary.correctStreak} correct`
-      : summary.incorrectStreak > 0
-        ? `${summary.incorrectStreak} missed`
-        : "None";
-  const reviewStatusLabel =
-    summary.nextReviewAt === undefined || summary.isDue
-      ? "Due now"
-      : `Paused until ${formatDateTime({ dateTime: summary.nextReviewAt })}`;
+  const selectedWordId = useSelector(
+    actor,
+    (snapshot) => snapshot.context.selectedWordId
+  );
+  const summary = useSelector(actor, (snapshot) =>
+    snapshot.context.summaries.find(
+      (candidate) => candidate.word.id === snapshot.context.selectedWordId
+    )
+  );
+  const attempts = useSelector(
+    actor,
+    (snapshot) => snapshot.context.selectedAttempts
+  );
+  const isLoading = useSelector(actor, (snapshot) =>
+    snapshot.matches("LoadingAttempts")
+  );
 
   return (
-    <Dialog.Root>
-      <article>
-        <Dialog.Trigger
-          type="button"
-          className="grid w-full min-w-0 grid-cols-[max-content_minmax(0,1fr)_auto] items-center gap-3 px-3 py-4 text-left transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:gap-4"
-        >
-          <span className="min-w-max whitespace-nowrap text-xl font-black leading-tight">
-            <WordText text={summary.word.text} />
-          </span>
-          <AttemptResultStrip attempts={summary.attempts} />
-          <SelectionPriorityValue
-            className="justify-self-end text-right text-sm font-black sm:text-base"
-            scale={selectionPriorityScale}
-            selectionWeight={summary.selectionWeight}
-          />
-        </Dialog.Trigger>
-        <Dialog.Portal>
-          <Dialog.Backdrop className={dialogBackdropClassName} />
-          <Dialog.Popup className={dialogPopupClassName}>
-            <div className="flex min-w-0 items-start justify-between gap-4">
-              <div className="min-w-0">
-                <Dialog.Title className="wrap-break-word text-2xl font-black leading-tight">
-                  <WordText text={summary.word.text} />
-                </Dialog.Title>
-              </div>
-              <Dialog.Close
-                aria-label="Close word details"
-                className={dialogIconButtonClassName}
-              >
-                <X size={16} strokeWidth={2.5} />
-              </Dialog.Close>
-            </div>
-            <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
-              <div className="grid gap-4">
-                <Dialog.Description className="wrap-break-word text-sm font-bold leading-6 text-ink-muted">
-                  {summary.word.translation}
-                </Dialog.Description>
-                {summary.word.description === undefined ? null : (
-                  <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
-                    {summary.word.description}
-                  </p>
-                )}
-                <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  <WordHistoryStat
-                    label="Level"
-                    value={`Level ${summary.reviewLevel}`}
-                  />
-                  <WordHistoryStat
-                    label="Progress"
-                    value={`${summary.reviewProgress}/${summary.reviewProgressTarget}`}
-                  />
-                  <WordHistoryStat label="Review" value={reviewStatusLabel} />
-                  <WordHistoryStat
-                    label="Selection"
-                    value={
-                      <SelectionPriorityValue
-                        scale={selectionPriorityScale}
-                        selectionWeight={summary.selectionWeight}
-                      />
-                    }
-                  />
-                  <WordHistoryStat
-                    label="Accuracy"
-                    value={`${summary.accuracy}%`}
-                  />
-                  <WordHistoryStat
-                    label="Attempts"
-                    value={`${summary.attemptCount}`}
-                  />
-                  <WordHistoryStat
-                    label="Correct"
-                    value={`${summary.correctCount}`}
-                  />
-                  <WordHistoryStat label="Streak" value={streakLabel} />
-                </dl>
-                {summary.lastSubmittedAt === undefined ? null : (
-                  <p className="text-xs font-black text-ink-muted">
-                    Last attempted{" "}
-                    {formatDateTime({ dateTime: summary.lastSubmittedAt })}
-                  </p>
-                )}
-                {EffectArray.isReadonlyArrayNonEmpty(summary.attempts) ? (
-                  <div className="divide-y divide-line">
-                    {summary.attempts.map((attempt) => (
-                      <WordHistoryAttemptRow
-                        key={attempt.submission.id}
-                        attempt={attempt}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="py-6 text-sm font-bold text-ink-muted">
-                    No attempts yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          </Dialog.Popup>
-        </Dialog.Portal>
-      </article>
+    <Dialog.Root
+      open={selectedWordId !== undefined}
+      onOpenChange={(open) => {
+        if (!open) {
+          actor.trigger.closeWord();
+        }
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Backdrop className={dialogBackdropClassName} />
+        <Dialog.Popup className={dialogPopupClassName}>
+          <div className="flex min-w-0 items-start justify-between gap-4">
+            <Dialog.Title className="min-w-0 wrap-break-word text-2xl font-black leading-tight">
+              {summary === undefined ? (
+                "Word history"
+              ) : (
+                <WordText text={summary.word.text} />
+              )}
+            </Dialog.Title>
+            <Dialog.Close
+              aria-label="Close word details"
+              className={dialogIconButtonClassName}
+            >
+              <X size={16} strokeWidth={2.5} />
+            </Dialog.Close>
+          </div>
+          <div className="min-h-0 overflow-y-auto overscroll-contain pr-1">
+            {summary === undefined ? null : (
+              <WordHistoryDetails
+                attempts={attempts}
+                isLoading={isLoading}
+                summary={summary}
+              />
+            )}
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
     </Dialog.Root>
   );
 }
 
-function AttemptResultStrip({
+function WordHistoryDetails({
   attempts,
+  isLoading,
+  summary,
 }: {
   readonly attempts: readonly WordHistoryAttempt[];
+  readonly isLoading: boolean;
+  readonly summary: ReturnType<
+    WordPracticeHistoryActor["getSnapshot"]
+  >["context"]["summaries"][number];
 }) {
-  const visibleAttempts = attempts.slice(0, VisibleAttemptLimit);
-  const attemptLabel = EffectArray.isReadonlyArrayNonEmpty(attempts)
-    ? attempts
-        .map((attempt) =>
-          attempt.result === "correct" ? "Correct" : "Incorrect"
-        )
-        .join(", ")
-    : "No attempts yet";
-  const hiddenCountMarkers = Array.from(
-    { length: visibleAttempts.length + 1 },
-    (_, visibleCount) => {
-      const hiddenAttemptCount = attempts.length - visibleCount;
-
-      if (hiddenAttemptCount <= 0) {
-        return null;
-      }
-
-      return (
-        <span
-          key={visibleCount}
-          aria-hidden="true"
-          className={`word-history-attempt-hidden-count word-history-attempt-hidden-count-${visibleCount} shrink-0 text-xs font-black text-ink-muted`}
-        >
-          +{hiddenAttemptCount}
-        </span>
-      );
-    }
-  );
+  const stability =
+    summary.state.stability < 1
+      ? `${Math.max(1, Math.round(summary.state.stability * 24))} hours`
+      : `${Math.round(summary.state.stability)} days`;
 
   return (
-    <span
-      aria-label={attemptLabel}
-      className="word-history-attempt-strip flex min-w-0 items-center justify-end gap-2"
-    >
-      {EffectArray.isReadonlyArrayNonEmpty(visibleAttempts) ? (
-        <>
-          {hiddenCountMarkers}
-          {visibleAttempts.map((attempt, attemptIndex) => (
-            <span
-              key={attempt.submission.id}
-              className={`word-history-attempt-icon word-history-attempt-icon-${attemptIndex} shrink-0`}
-            >
-              <WordHistoryResultIcon result={attempt.result} size={18} />
-            </span>
-          ))}
-        </>
-      ) : (
-        <span className="h-px w-6 rounded-full bg-line" />
+    <div className="grid gap-4">
+      <Dialog.Description className="wrap-break-word text-sm font-bold leading-6 text-ink-muted">
+        {summary.word.translation}
+      </Dialog.Description>
+      {summary.word.description === undefined ? null : (
+        <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
+          {summary.word.description}
+        </p>
       )}
-    </span>
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <WordHistoryStat label="Status" value={StatusLabels[summary.status]} />
+        <WordHistoryStat
+          label="Recall"
+          value={`${Math.round(summary.retrievability * 100)}%`}
+        />
+        <WordHistoryStat label="Stability" value={stability} />
+        <WordHistoryStat
+          label="Next"
+          value={
+            summary.isDue
+              ? "Due now"
+              : formatDateTime({ dateTime: summary.state.dueAt })
+          }
+        />
+        <WordHistoryStat label="Accuracy" value={`${summary.accuracy}%`} />
+        <WordHistoryStat label="Attempts" value={`${summary.attemptCount}`} />
+        <WordHistoryStat label="Correct" value={`${summary.correctCount}`} />
+        <WordHistoryStat label="Lapses" value={`${summary.state.lapses}`} />
+      </dl>
+      <p className="text-xs font-black text-ink-muted">
+        Last practiced{" "}
+        {formatDateTime({ dateTime: summary.state.lastPracticedAt })}
+      </p>
+      {isLoading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm font-bold text-ink-muted">
+          <LoaderCircle className="animate-spin" size={18} strokeWidth={2.5} />
+          Loading attempts
+        </div>
+      ) : !EffectArray.isReadonlyArrayNonEmpty(attempts) ? (
+        <div className="py-6 text-sm font-bold text-ink-muted">
+          No attempts yet.
+        </div>
+      ) : (
+        <div className="divide-y divide-line">
+          {attempts.map((attempt) => (
+            <WordHistoryAttemptRow key={attempt.id} attempt={attempt} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -391,95 +356,33 @@ function WordHistoryAttemptRow({
 }: {
   readonly attempt: WordHistoryAttempt;
 }) {
-  const batchLabel =
-    attempt.batch === undefined
-      ? "Legacy"
-      : `Batch ${attempt.batch.batchNumber}`;
+  const isCorrect = attempt.result === "correct";
+  const ResultIcon = isCorrect ? CircleCheck : CircleX;
+  const sourceLabel =
+    attempt.kind === "extra"
+      ? "Extra practice"
+      : `${attempt.source.charAt(0).toLocaleUpperCase()}${attempt.source.slice(1)}`;
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-4">
-      <WordHistoryResultIcon result={attempt.result} size={20} />
+      <ResultIcon
+        aria-label={isCorrect ? "Correct" : "Incorrect"}
+        className={isCorrect ? "shrink-0 text-teal" : "shrink-0 text-accent"}
+        role="img"
+        size={20}
+        strokeWidth={2.5}
+      />
       <div className="min-w-0">
         <p className="wrap-break-word whitespace-pre-wrap text-base font-black leading-7">
-          {attempt.submission.submittedText.trim() === ""
+          {attempt.submittedText.trim() === ""
             ? "Blank answer"
-            : attempt.submission.submittedText}
+            : attempt.submittedText}
         </p>
         <p className="mt-1 text-xs font-bold text-ink-muted">
-          {batchLabel} ·{" "}
-          {formatDateTime({
-            dateTime: attempt.submission.submittedAt,
-          })}
+          {sourceLabel} · {formatDateTime({ dateTime: attempt.reviewedAt })}
         </p>
       </div>
     </div>
-  );
-}
-
-function WordHistoryResultIcon({
-  result,
-  size,
-}: {
-  readonly result: WordHistoryAttempt["result"];
-  readonly size: number;
-}) {
-  const isCorrect = result === "correct";
-  const ResultIcon = isCorrect ? CircleCheck : CircleX;
-
-  return (
-    <ResultIcon
-      aria-label={isCorrect ? "Correct" : "Incorrect"}
-      className={isCorrect ? "shrink-0 text-teal" : "shrink-0 text-accent"}
-      role="img"
-      size={size}
-      strokeWidth={2.5}
-    />
-  );
-}
-
-function SelectionPriorityValue({
-  className,
-  scale,
-  selectionWeight,
-}: {
-  readonly className?: string;
-  readonly scale: SelectionPriorityScale;
-  readonly selectionWeight: number;
-}) {
-  const spread = scale.maxWeight - scale.minWeight;
-  let selectionPriority: SelectionPriority;
-
-  if (spread <= Number.EPSILON) {
-    if (selectionWeight <= 1) {
-      selectionPriority = SelectionPriorities[0];
-    } else if (selectionWeight <= 20) {
-      selectionPriority = SelectionPriorities[1];
-    } else if (selectionWeight <= 50) {
-      selectionPriority = SelectionPriorities[2];
-    } else {
-      selectionPriority = SelectionPriorities[3];
-    }
-  } else {
-    const normalizedWeight = (selectionWeight - scale.minWeight) / spread;
-
-    if (normalizedWeight <= 0.25) {
-      selectionPriority = SelectionPriorities[0];
-    } else if (normalizedWeight <= 0.5) {
-      selectionPriority = SelectionPriorities[1];
-    } else if (normalizedWeight <= 0.75) {
-      selectionPriority = SelectionPriorities[2];
-    } else {
-      selectionPriority = SelectionPriorities[3];
-    }
-  }
-
-  return (
-    <span
-      aria-label={`Practice priority: ${selectionPriority.label}`}
-      className={`${className ?? ""} ${selectionPriority.className}`}
-    >
-      {selectionPriority.label}
-    </span>
   );
 }
 
@@ -502,6 +405,5 @@ function WordHistoryStat({
   );
 }
 
-function _formatWordCount({ count }: { readonly count: number }) {
-  return `${count} ${count === 1 ? "word" : "words"}`;
-}
+const _formatWordCount = ({ count }: { readonly count: number }) =>
+  `${count} ${count === 1 ? "word" : "words"}`;

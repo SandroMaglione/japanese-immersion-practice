@@ -7,6 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "node --test --experimental-strip-types src/*.test.ts",
     "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "ts-fsrs": "5.4.1"
   }
 }
