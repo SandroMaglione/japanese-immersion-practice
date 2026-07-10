@@ -1,6 +1,6 @@
 import { Link, Outlet, createRootRoute } from "@tanstack/react-router";
 import { Tooltip } from "@base-ui/react/tooltip";
-import { Brain, Dumbbell, ListChecks, WholeWord } from "lucide-react";
+import { BookCopy, BookOpenCheck, ListChecks, WholeWord } from "lucide-react";
 
 export const Route = createRootRoute({
   component: RootRoute,
@@ -52,7 +52,7 @@ function RootRoute() {
                 />
               }
             >
-              <Brain size={18} strokeWidth={2.5} />
+              <BookCopy size={18} strokeWidth={2.5} />
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Positioner sideOffset={8}>
@@ -100,7 +100,7 @@ function RootRoute() {
                 />
               }
             >
-              <Dumbbell size={18} strokeWidth={2.5} />
+              <BookOpenCheck size={18} strokeWidth={2.5} />
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Positioner sideOffset={8}>

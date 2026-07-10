@@ -12,7 +12,7 @@ import {
   Sparkles,
   Sprout,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
@@ -58,6 +58,8 @@ const StatusPresentation = {
     Icon: CalendarClock,
   },
 } as const;
+
+const WordPageSize = 100;
 
 export const Route = createFileRoute("/levels")({
   component: WordMemoryRoute,
@@ -155,7 +157,39 @@ function WordMemoryTabs({ actor }: { readonly actor: WordMemoryActor }) {
 }
 
 function WordMemoryPanel({ group }: { readonly group: WordMemoryGroup }) {
-  const [visibleWordCount, setVisibleWordCount] = useState(100);
+  const [visibleWordCount, setVisibleWordCount] = useState(WordPageSize);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const hasMoreWords = visibleWordCount < group.words.length;
+
+  useEffect(() => {
+    const sentinel = loadMoreSentinelRef.current;
+
+    if (!hasMoreWords || sentinel === null) {
+      return;
+    }
+
+    if (window.IntersectionObserver === undefined) {
+      setVisibleWordCount(group.words.length);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting === true) {
+          setVisibleWordCount((count) =>
+            Math.min(count + WordPageSize, group.words.length)
+          );
+        }
+      },
+      { rootMargin: "240px 0px" }
+    );
+
+    observer.observe(sentinel);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [group.words.length, hasMoreWords]);
 
   if (!EffectArray.isReadonlyArrayNonEmpty(group.words)) {
     return (
@@ -179,18 +213,12 @@ function WordMemoryPanel({ group }: { readonly group: WordMemoryGroup }) {
           <WordMemoryRow key={word.word.id} word={word} />
         ))}
       </section>
-      {visibleWords.length < group.words.length ? (
-        <div className="flex justify-center py-6">
-          <Button
-            type="button"
-            className="h-10 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
-            onClick={() => {
-              setVisibleWordCount((count) => count + 100);
-            }}
-          >
-            Load more
-          </Button>
-        </div>
+      {hasMoreWords ? (
+        <div
+          ref={loadMoreSentinelRef}
+          aria-hidden="true"
+          className="h-px w-full"
+        />
       ) : null}
     </div>
   );
@@ -201,9 +229,7 @@ function WordMemoryRow({
 }: {
   readonly word: WordMemoryGroup["words"][number];
 }) {
-  const dueLabel = word.isDue
-    ? "Due now"
-    : `Next ${formatDateTime({ dateTime: word.state.dueAt })}`;
+  const reviewDate = formatDateTime({ dateTime: word.state.dueAt });
   const retention = Math.round(word.retrievability * 100);
   const stability =
     word.state.stability < 1
@@ -211,21 +237,21 @@ function WordMemoryRow({
       : `${Math.round(word.state.stability)}d stability`;
 
   return (
-    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-3 px-3 py-4 sm:items-center sm:gap-4">
+    <article className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-4">
       <div className="min-w-0">
         <span className="wrap-break-word text-xl font-black leading-tight">
           <WordText text={word.word.text} />
         </span>
-        <p className="mt-1 text-xs font-bold text-ink-muted">
-          {word.state.attemptCount} attempts · {word.state.lapses} lapses
-        </p>
       </div>
-      <div className="min-w-0 justify-self-end text-right">
-        <p className="whitespace-nowrap text-sm font-black text-ink">
+      <div className="grid min-w-0 justify-items-end gap-1 justify-self-end text-right">
+        <p className="whitespace-nowrap text-sm font-normal text-ink">
           {retention}% recall
         </p>
-        <p className="mt-1 max-w-[48vw] wrap-break-word text-xs font-bold leading-5 text-ink-muted sm:max-w-72">
-          {dueLabel} · {stability}
+        <p className="max-w-[48vw] wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:max-w-72">
+          {reviewDate}
+        </p>
+        <p className="text-xs font-normal leading-5 text-ink-muted">
+          {stability}
         </p>
       </div>
     </article>

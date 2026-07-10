@@ -130,60 +130,28 @@ function PracticeSession({
           : isShowingResult
             ? "Scheduled"
             : "Due review";
-  const statusClassName = isExtraPractice
-    ? "border-gold/35 bg-gold-soft text-gold"
+  const statusTextClassName = isExtraPractice
+    ? "text-gold"
     : displayedPhase === "new"
-      ? "border-sky/35 bg-sky/10 text-sky"
+      ? "text-sky"
       : displayedPhase === "learning"
-        ? "border-teal/35 bg-teal-soft text-teal"
+        ? "text-teal"
         : displayedPhase === "relearning"
-          ? "border-accent/35 bg-accent-soft text-accent"
+          ? "text-accent"
           : isShowingResult
-            ? "border-line bg-field text-ink"
-            : "border-gold/35 bg-gold-soft text-gold";
+            ? "text-ink-muted"
+            : "text-gold";
 
   return (
-    <section className="grid h-[calc(100svh-9.5rem)] min-h-0 min-w-0 grid-rows-[2.75rem_minmax(0,1fr)] gap-2 overflow-hidden py-1 sm:h-auto sm:min-h-[calc(100svh-12rem)] sm:grid-rows-[2.75rem_minmax(0,1fr)] sm:gap-4 sm:py-6">
-      <header
-        className={`mx-auto flex h-11 w-full max-w-xl items-center justify-between gap-3 rounded-lg border px-3 shadow-[0_4px_14px_rgba(0,0,0,0.1)] transition-colors ${isExtraPractice ? "border-gold/50 bg-gold-soft/45" : "border-line bg-panel"}`}
-      >
-        <div className="flex min-w-0 items-center gap-2.5">
-          <strong className="text-2xl font-black tabular-nums leading-none text-ink">
-            {stats.attemptCount}
-          </strong>
-          <span aria-hidden="true" className="text-xs text-ink-muted">
-            ・
-          </span>
-          <span
-            aria-label={`${stats.correctCount} correct`}
-            className="inline-flex items-center gap-1 text-xs font-black tabular-nums text-sky"
-          >
-            <CircleCheck aria-hidden="true" size={14} strokeWidth={2.5} />
-            {stats.correctCount}
-          </span>
-          <span
-            aria-label={`${stats.attemptCount - stats.correctCount} incorrect`}
-            className="inline-flex items-center gap-1 text-xs font-black tabular-nums text-berry"
-          >
-            <CircleX aria-hidden="true" size={14} strokeWidth={2.5} />
-            {stats.attemptCount - stats.correctCount}
-          </span>
-        </div>
-        <span
-          aria-live="polite"
-          className={`inline-flex min-h-6 items-center rounded-full border px-2.5 text-[0.7rem] font-black ${statusClassName}`}
-        >
-          {statusLabel}
-        </span>
-      </header>
+    <section className="h-[calc(100svh-9.5rem)] min-h-0 min-w-0 overflow-hidden py-1 sm:h-auto sm:min-h-[calc(100svh-12rem)] sm:py-6">
       <form
-        className="mx-auto grid min-h-0 w-full max-w-xl min-w-0 grid-rows-[minmax(0,1fr)_3.5rem_3.5rem] gap-3 overflow-hidden pb-10 text-center sm:grid-rows-[minmax(0,1fr)_3.5rem_4rem] sm:gap-5"
+        className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden text-center sm:gap-5"
         onSubmit={(event) => {
           event.preventDefault();
           actor.trigger.submit();
         }}
       >
-        <div className="flex min-h-0 w-full flex-col items-center justify-center gap-3 overflow-y-auto overscroll-contain px-1">
+        <div className="grid w-full shrink-0 content-start justify-items-center gap-3 px-1 pt-1">
           {isShowingResult ? (
             <div className="grid w-full gap-3">
               <ResultIcon
@@ -196,7 +164,7 @@ function PracticeSession({
               <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
                 <WordText text={lastResult.word.text} />
               </h1>
-              <p className="w-full wrap-break-word text-lg font-black leading-tight text-ink-muted sm:text-2xl">
+              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.word.translation}
               </p>
               {lastResult.word.description === undefined ? null : (
@@ -208,7 +176,7 @@ function PracticeSession({
           ) : currentItem === undefined ? null : (
             <div className="grid w-full gap-2 sm:gap-3">
               <h1
-                className={`w-full wrap-break-word font-black leading-tight ${
+                className={`w-full wrap-break-word font-normal leading-tight ${
                   currentItem.word.description === undefined
                     ? "text-2xl sm:text-3xl"
                     : "text-xl sm:text-2xl"
@@ -217,7 +185,7 @@ function PracticeSession({
                 {currentItem.word.description ?? currentItem.word.translation}
               </h1>
               {currentItem.word.description === undefined ? null : (
-                <p className="w-full wrap-break-word text-xs font-bold leading-5 text-ink-muted sm:text-sm">
+                <p className="w-full wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:text-sm">
                   {currentItem.word.translation}
                 </p>
               )}
@@ -232,7 +200,7 @@ function PracticeSession({
                   type="button"
                   aria-label="Next"
                   autoFocus
-                  className="inline-flex h-14 w-14 items-center justify-center justify-self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+                  className="inline-flex h-14 w-14 items-center justify-center self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
                   onClick={() => {
                     actor.trigger.submit();
                   }}
@@ -250,7 +218,7 @@ function PracticeSession({
             </Tooltip.Portal>
           </Tooltip.Root>
         ) : (
-          <div className="flex w-full min-w-0 gap-2">
+          <div className="mt-10 flex w-full min-w-0 gap-2">
             <label className="sr-only" htmlFor="practice-response">
               Japanese word
             </label>
@@ -311,27 +279,41 @@ function PracticeSession({
             </Tooltip.Root>
           </div>
         )}
-        <div className="grid min-h-14 w-full justify-items-center gap-1 text-sm font-bold leading-6 text-ink-muted">
+        <div
+          aria-label="Session progress"
+          aria-live="polite"
+          className="flex min-h-5 w-full flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-xs font-black tabular-nums text-ink-muted"
+        >
+          <span className="inline-flex items-baseline gap-1">
+            <span>{stats.attemptCount}</span>
+            <span>total</span>
+          </span>
+          <span aria-hidden="true">・</span>
+          <span
+            aria-label={`${stats.correctCount} correct`}
+            className="inline-flex items-center gap-1 text-sky"
+          >
+            <CircleCheck aria-hidden="true" size={14} strokeWidth={2.5} />
+            {stats.correctCount}
+          </span>
+          <span
+            aria-label={`${stats.attemptCount - stats.correctCount} incorrect`}
+            className="inline-flex items-center gap-1 text-berry"
+          >
+            <CircleX aria-hidden="true" size={14} strokeWidth={2.5} />
+            {stats.attemptCount - stats.correctCount}
+          </span>
+          <span aria-hidden="true">・</span>
+          <span className={statusTextClassName}>{statusLabel}</span>
+        </div>
+        <div className="grid w-full justify-items-center gap-1 text-center text-xs font-normal leading-5 text-ink-muted">
           {message === undefined ? null : (
-            <span className="text-accent">{message}</span>
+            <span className="font-bold text-accent">{message}</span>
           )}
           {lastResult === undefined ? null : (
-            <>
-              <span
-                className={lastResult.isCorrect ? "text-teal" : "text-accent"}
-              >
-                {lastResult.isCorrect ? "Correct" : "Incorrect"} ·{" "}
-                {lastResult.kind === "extra"
-                  ? "Extra practice"
-                  : lastResult.phaseAfter.charAt(0).toLocaleUpperCase() +
-                    lastResult.phaseAfter.slice(1)}
-              </span>
-              <span>
-                {lastResult.changedSchedule
-                  ? `Next ${formatDateTime({ dateTime: lastResult.nextReviewAt })}`
-                  : `Schedule unchanged · Next ${formatDateTime({ dateTime: lastResult.nextReviewAt })}`}
-              </span>
-            </>
+            <span>
+              Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
+            </span>
           )}
         </div>
       </form>
