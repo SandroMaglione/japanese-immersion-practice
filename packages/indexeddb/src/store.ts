@@ -135,6 +135,25 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           .reverse();
       }),
 
+      replaceMemoryStates: Effect.fn("Store.replaceMemoryStates")(function* (
+        states: readonly Domain.WordMemoryState[]
+      ) {
+        if (!EffectArray.isReadonlyArrayNonEmpty(states)) {
+          return;
+        }
+
+        yield* db.withTransaction({
+          tables: ["word_memory_states"],
+          mode: "readwrite",
+        })(
+          Effect.forEach(
+            states,
+            (state) => db.from("word_memory_states").upsert(state),
+            { discard: true }
+          )
+        );
+      }),
+
       getMemoryState: Effect.fn("Store.getMemoryState")(function* (
         wordId: Domain.WordMemoryState["wordId"]
       ) {
