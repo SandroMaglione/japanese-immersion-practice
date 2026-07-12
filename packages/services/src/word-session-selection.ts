@@ -47,8 +47,8 @@ export const MaximumActiveLearningWords = 20;
 export const MaximumMissesPerWordPerSession = 3;
 export const RecentWordLimit = 6;
 export const MinimumActiveLearningVariety = RecentWordLimit + 1;
-export const NewWordCreditPerAttempt = 1 / 8;
-export const NewWordCreditPerBacklogAttempt = 1 / 20;
+export const NewWordCreditPerAttempt = 1 / 4;
+export const NewWordCreditPerBacklogAttempt = 1 / 8;
 export const DueBacklogThreshold = 64;
 export const ForcedOldestDueFrequency = 4;
 

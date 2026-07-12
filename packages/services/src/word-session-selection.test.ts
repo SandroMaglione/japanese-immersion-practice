@@ -3,6 +3,7 @@ import test from "node:test";
 import { Array as EffectArray, HashSet } from "effect";
 
 import {
+  DueBacklogThreshold,
   MaximumActiveLearningWords,
   selectNextWord,
   sessionStateAfterResult,
@@ -194,6 +195,90 @@ test("selection and result updates maintain session pacing", () => {
   assert.deepEqual(afterSelection.recentWordIds, ["new"]);
   assert.equal(afterResult.missCounts.new, 1);
   assert.ok(afterResult.newWordCredit > 0);
+});
+
+test("a new word is unlocked after four normal attempts", () => {
+  let state = _state({ newWordCredit: 0 });
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    state = sessionStateAfterResult({
+      dueReviewCount: 0,
+      result: "correct",
+      state,
+      wordId: `review-${attempt}`,
+    });
+  }
+
+  assert.equal(state.newWordCredit, 0.75);
+  assert.notEqual(
+    selectNextWord({
+      now,
+      pools: _pools({
+        extra: [_candidate({ wordId: "extra" })],
+        newWords: [_candidate({ phase: "new", wordId: "new" })],
+      }),
+      randomFraction: 0,
+      state,
+    })?.source,
+    "new"
+  );
+
+  state = sessionStateAfterResult({
+    dueReviewCount: 0,
+    result: "correct",
+    state,
+    wordId: "review-3",
+  });
+
+  assert.equal(state.newWordCredit, 1);
+  assert.equal(
+    selectNextWord({
+      now,
+      pools: _pools({
+        extra: [_candidate({ wordId: "extra" })],
+        newWords: [_candidate({ phase: "new", wordId: "new" })],
+      }),
+      randomFraction: 0,
+      state,
+    })?.source,
+    "new"
+  );
+});
+
+test("a new word is unlocked after eight attempts during a due backlog", () => {
+  let state = _state({ newWordCredit: 0 });
+
+  for (let attempt = 0; attempt < 7; attempt += 1) {
+    state = sessionStateAfterResult({
+      dueReviewCount: DueBacklogThreshold,
+      result: "correct",
+      state,
+      wordId: `review-${attempt}`,
+    });
+  }
+
+  assert.equal(state.newWordCredit, 0.875);
+
+  state = sessionStateAfterResult({
+    dueReviewCount: DueBacklogThreshold,
+    result: "correct",
+    state,
+    wordId: "review-7",
+  });
+
+  assert.equal(state.newWordCredit, 1);
+  assert.equal(
+    selectNextWord({
+      now,
+      pools: _pools({
+        dueReview: [_candidate({ wordId: "due" })],
+        newWords: [_candidate({ phase: "new", wordId: "new" })],
+      }),
+      randomFraction: 0,
+      state,
+    })?.source,
+    "new"
+  );
 });
 
 test("a rolling bounded pool eventually selects all 5,000 due words", () => {
