@@ -17,16 +17,18 @@ const now = Date.UTC(2026, 0, 1);
 
 const _candidate = ({
   dueAtMillis = now,
+  lastPracticedAtMillis = now - 86_400_000,
   phase = "review",
   wordId,
 }: {
   readonly dueAtMillis?: number;
+  readonly lastPracticedAtMillis?: number;
   readonly phase?: WordSessionSelectionCandidate["phase"];
   readonly wordId: string;
 }): WordSessionSelectionCandidate => ({
   difficulty: 5,
   dueAtMillis,
-  lastPracticedAtMillis: now - 86_400_000,
+  lastPracticedAtMillis,
   phase,
   retrievability: 0.8,
   scheduledDays: 1,
@@ -151,6 +153,52 @@ test("early learning practice does not advance a correct word's schedule", () =>
 
   assert.equal(selection?.source, "learning");
   assert.equal(selection?.kind, "extra");
+});
+
+test("extra practice prefers a word outside the practice cooldown", () => {
+  const selection = selectNextWord({
+    now,
+    pools: _pools({
+      extra: [
+        _candidate({
+          dueAtMillis: now + 60_000,
+          lastPracticedAtMillis: now - 5 * 60_000,
+          wordId: "recent-high-priority",
+        }),
+        _candidate({
+          dueAtMillis: now + 30 * 86_400_000,
+          lastPracticedAtMillis: now - 86_400_000,
+          wordId: "older-practice",
+        }),
+      ],
+    }),
+    randomFraction: 0,
+    state: _state({}),
+  });
+
+  assert.equal(selection?.candidate.wordId, "older-practice");
+});
+
+test("extra practice relaxes the cooldown when every word is recent", () => {
+  const selection = selectNextWord({
+    now,
+    pools: _pools({
+      extra: [
+        _candidate({
+          lastPracticedAtMillis: now - 5 * 60_000,
+          wordId: "recent-a",
+        }),
+        _candidate({
+          lastPracticedAtMillis: now - 10 * 60_000,
+          wordId: "recent-b",
+        }),
+      ],
+    }),
+    randomFraction: 0,
+    state: _state({}),
+  });
+
+  assert.equal(selection?.source, "extra");
 });
 
 test("a word is suppressed after three misses in the session", () => {

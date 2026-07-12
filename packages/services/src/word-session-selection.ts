@@ -51,6 +51,7 @@ export const NewWordCreditPerAttempt = 1 / 4;
 export const NewWordCreditPerBacklogAttempt = 1 / 8;
 export const DueBacklogThreshold = 64;
 export const ForcedOldestDueFrequency = 4;
+export const ExtraPracticeCooldownMillis = 12 * 60 * 60 * 1_000;
 
 const _availableCandidates = ({
   candidates,
@@ -101,15 +102,16 @@ const _chooseWeighted = ({
         score: Math.max(0.01, score),
       };
     })
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 20);
-  const totalScore = rankedCandidates.reduce(
+    .sort((left, right) => right.score - left.score);
+  const weightedCandidates =
+    source === "review" ? rankedCandidates.slice(0, 20) : rankedCandidates;
+  const totalScore = weightedCandidates.reduce(
     (total, candidate) => total + candidate.score,
     0
   );
   let remainingScore = randomFraction * totalScore;
 
-  for (const rankedCandidate of rankedCandidates) {
+  for (const rankedCandidate of weightedCandidates) {
     remainingScore -= rankedCandidate.score;
 
     if (remainingScore <= 0) {
@@ -117,7 +119,7 @@ const _chooseWeighted = ({
     }
   }
 
-  return rankedCandidates[rankedCandidates.length - 1]?.candidate;
+  return weightedCandidates[weightedCandidates.length - 1]?.candidate;
 };
 
 const _sourceForLearningPhase = ({
@@ -167,10 +169,19 @@ export const selectNextWord = ({
     candidates: pools.newWords,
     state,
   });
-  const extra = _selectWithRecentRule({
+  const extraCandidates = _selectWithRecentRule({
     candidates: pools.extra,
     state,
   });
+  const extraOutsideCooldown = extraCandidates.filter(
+    (candidate) =>
+      candidate.lastPracticedAtMillis === undefined ||
+      now - candidate.lastPracticedAtMillis >= ExtraPracticeCooldownMillis
+  );
+  const extra =
+    extraOutsideCooldown[0] === undefined
+      ? extraCandidates
+      : extraOutsideCooldown;
   const earlyLearning = _selectWithRecentRule({
     candidates: pools.earlyLearning,
     state,
