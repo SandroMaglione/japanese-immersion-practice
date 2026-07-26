@@ -62,6 +62,12 @@ const MemoryStatuses = [
 
 const MillisecondsPerDay = 86_400_000;
 
+const _activeWords = ({
+  words,
+}: {
+  readonly words: readonly IndexedDb.Domain.Word[];
+}) => words.filter((word) => word.archivedAt === undefined);
+
 const _median = ({ values }: { readonly values: readonly number[] }) => {
   if (values[0] === undefined) {
     return 0;
@@ -260,7 +266,7 @@ export const makeWordMemoryMachine = ({
               const stateByWordId = HashMap.fromIterable(
                 states.map((state) => [state.wordId, state] as const)
               );
-              const overviewWords = words.flatMap((word) => {
+              const overviewWords = _activeWords({ words }).flatMap((word) => {
                 const state = Option.getOrUndefined(
                   HashMap.get(stateByWordId, word.id)
                 );
@@ -347,8 +353,12 @@ export const makeWordMemoryMachine = ({
               ]);
               const now = DateTime.toEpochMillis(yield* DateTime.now);
 
-              return _calculateRecalculation({ events, now, states, words })
-                .preview;
+              return _calculateRecalculation({
+                events,
+                now,
+                states,
+                words: _activeWords({ words }),
+              }).preview;
             })
           ),
       }),
@@ -372,7 +382,7 @@ export const makeWordMemoryMachine = ({
                 events,
                 now,
                 states,
-                words,
+                words: _activeWords({ words }),
               });
 
               yield* store.replaceMemoryStates(recalculation.changedStates);

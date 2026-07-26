@@ -5,6 +5,7 @@ import {
   DateTime,
   Effect,
   HashMap,
+  HashSet,
   Option,
   Predicate,
   Schema,
@@ -156,6 +157,14 @@ export const makeWordPracticeHistoryMachine = ({
               }
 
               const store = yield* IndexedDb.Store.Store;
+              const word = yield* store.getWord(input);
+
+              if (word === undefined || word.archivedAt !== undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not find that word.")
+                );
+              }
+
               const attempts = yield* store.listPracticeEventsByWord(input);
 
               return {
@@ -173,10 +182,20 @@ export const makeWordPracticeHistoryMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const store = yield* IndexedDb.Store.Store;
-              const [words, states] = yield* Effect.all([
+              const [events, words, states] = yield* Effect.all([
+                store.listPracticeEvents(),
                 store.listWords(),
                 store.listMemoryStates(),
               ]);
+              const activeWords = words.filter(
+                (word) => word.archivedAt === undefined
+              );
+              let activeWordIds = HashSet.empty<IndexedDb.Domain.WordId>();
+
+              for (const word of activeWords) {
+                activeWordIds = HashSet.add(activeWordIds, word.id);
+              }
+
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const today = new Date(now);
               const startOfToday = new Date(
@@ -189,17 +208,20 @@ export const makeWordPracticeHistoryMachine = ({
                 today.getMonth(),
                 today.getDate() + 1
               ).getTime();
-              const todayAttemptCount = yield* store.countPracticeEventsBetween(
-                {
-                  end: startOfTomorrow,
-                  start: startOfToday,
-                }
-              );
+              const todayAttemptCount = events.filter((event) => {
+                const reviewedAt = DateTime.toEpochMillis(event.reviewedAt);
+
+                return (
+                  HashSet.has(activeWordIds, event.wordId) &&
+                  reviewedAt >= startOfToday &&
+                  reviewedAt < startOfTomorrow
+                );
+              }).length;
               const stateByWordId = HashMap.fromIterable(
                 states.map((state) => [state.wordId, state] as const)
               );
               const summaries: (typeof WordPracticeHistorySummarySchema.Type)[] =
-                words.flatMap((word) => {
+                activeWords.flatMap((word) => {
                   const state = Option.getOrUndefined(
                     HashMap.get(stateByWordId, word.id)
                   );

@@ -1,12 +1,19 @@
 import { IndexedDb } from "@jip/indexeddb";
-import { FuriganaText, WordMemoryScheduler } from "@jip/services";
+import {
+  FuriganaText,
+  WordMemoryScheduler,
+  WordPracticePresentation,
+} from "@jip/services";
 import {
   Array as EffectArray,
   DateTime,
   Effect,
   Formatter,
-  Option,
+  HashSet,
+  Predicate,
+  Result,
   Schema,
+  SchemaIssue,
 } from "effect";
 import { createAsyncLogic, setup } from "xstate";
 
@@ -16,17 +23,21 @@ const LibraryDataSchema = Schema.Struct({
   wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
-const WordLibraryViewSchema = Schema.Literals(["batch", "single"]);
+const WordLibraryViewSchema = Schema.Literals(["batch", "examples", "single"]);
+const WordArchiveActionSchema = Schema.Literals(["archive", "restore"]);
 
 export const DeleteAllWordsConfirmationText = "delete all my words";
 
 const LibraryContextSchema = Schema.Struct({
+  archiveAction: Schema.optionalKey(WordArchiveActionSchema),
+  changingArchiveWordText: Schema.optionalKey(Schema.String),
   deleteAllWordsConfirmation: Schema.String,
   deletingWordText: Schema.optionalKey(Schema.String),
   editingWordDescription: Schema.String,
   editingWordOriginalText: Schema.optionalKey(Schema.String),
   editingWordText: Schema.String,
   editingWordTranslation: Schema.String,
+  exampleImportJsonText: Schema.String,
   importedWordCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
   wordDescription: Schema.String,
@@ -58,6 +69,11 @@ const DeleteAllWordsInputSchema = Schema.Struct({
   confirmation: Schema.String,
 });
 
+const ChangeWordArchiveInputSchema = Schema.Struct({
+  action: WordArchiveActionSchema,
+  text: Schema.String,
+});
+
 const ImportWordsInputSchema = Schema.Struct({
   jsonText: Schema.String,
 });
@@ -66,6 +82,15 @@ const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
   skippedCount: Schema.Number,
   skippedReasons: Schema.Array(Schema.String),
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+});
+
+const ImportExamplesResultSchema = Schema.Struct({
+  addedExampleCount: Schema.Number,
+  skippedCount: Schema.Number,
+  skippedReasons: Schema.Array(Schema.String),
+  unchangedCount: Schema.Number,
+  updatedCount: Schema.Number,
   wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
@@ -80,6 +105,37 @@ const ExportWordsResultSchema = Schema.Struct({
 const FuriganaNotationDescription =
   "Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is.";
 
+const ImportNonEmptyStringSchema = Schema.String.check(
+  Schema.isTrimmed({
+    message: "Expected a value without leading or trailing whitespace.",
+  }),
+  Schema.isNonEmpty({
+    message: "Expected a non-empty string.",
+  })
+);
+
+const WordImportJsonExampleSchema = Schema.Struct({
+  note: Schema.optionalKey(
+    Schema.NullOr(
+      ImportNonEmptyStringSchema.annotate({
+        description:
+          "Optional explanation shown after the answer, such as a useful collocation, register note, or nuance.",
+      })
+    )
+  ),
+  template: ImportNonEmptyStringSchema.check(
+    Schema.isPattern(WordPracticePresentation.WordMarkerPattern, {
+      message: `Expected exactly one ${WordPracticePresentation.WordMarker} marker.`,
+    })
+  ).annotate({
+    description: `Japanese example sentence containing exactly one ${WordPracticePresentation.WordMarker} marker where the canonical word should be inserted. The word must fit without conjugation. ${FuriganaNotationDescription}`,
+  }),
+  translation: ImportNonEmptyStringSchema.annotate({
+    description:
+      "Intended translation for the example. It is hidden by default and shown when the learner requests a hint or reveals the answer.",
+  }),
+});
+
 const WordImportJsonWordSchema = Schema.Struct({
   description: Schema.optionalKey(
     Schema.NullOr(Schema.String).annotate({
@@ -87,20 +143,59 @@ const WordImportJsonWordSchema = Schema.Struct({
         "Optional Japanese definition-style clue for recall: clear meaning, natural contexts, register or formality, tone, common pairings, and contrast with similar words, phrased without naming the target word.",
     })
   ),
-  text: IndexedDb.Domain.NonEmptyString.annotate({
+  examples: Schema.optionalKey(
+    Schema.Array(WordImportJsonExampleSchema)
+      .check(
+        Schema.isNonEmpty({
+          message:
+            "Expected at least one example when the examples property is present.",
+        })
+      )
+      .annotate({
+        description:
+          "Alternative contextual prompts rotated during practice. A malformed example rejects this word while other valid words remain importable.",
+      })
+  ),
+  text: ImportNonEmptyStringSchema.annotate({
     description: `Japanese word or expression to import. ${FuriganaNotationDescription}`,
   }),
-  translation: IndexedDb.Domain.NonEmptyString.annotate({
+  translation: ImportNonEmptyStringSchema.annotate({
     description:
       "Plain translations for this Japanese word, separated by semicolons and a single space, with no semicolon at the end. Example: qualifications; requirements; capabilities. Do not include explanations, sentences, numbering, or extra notes.",
   }),
 });
 
 const WordImportJsonSourceSchema = Schema.Struct({
-  words: Schema.Array(Schema.Unknown),
+  formatVersion: Schema.Literal(1),
+  words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
+});
+
+const WordExampleImportJsonWordSchema = Schema.Struct({
+  examples: Schema.Array(WordImportJsonExampleSchema)
+    .check(
+      Schema.isNonEmpty({
+        message: "Expected at least one example.",
+      })
+    )
+    .annotate({
+      description:
+        "Examples to append to an existing word. A malformed example rejects this word while other valid words remain importable.",
+    }),
+  text: ImportNonEmptyStringSchema.annotate({
+    description: `Existing Japanese word or expression to enrich. Use the exact text produced by the library export. ${FuriganaNotationDescription}`,
+  }),
+});
+
+const WordExampleImportJsonSourceSchema = Schema.Struct({
+  formatVersion: Schema.Literal(1),
+  operation: Schema.Literal("addExamples"),
+  words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
 });
 
 export const WordImportJsonSchema = Schema.Struct({
+  formatVersion: Schema.Literal(1).annotate({
+    description: "Version of the word import format.",
+  }),
   words: Schema.Array(WordImportJsonWordSchema)
     .check(Schema.isNonEmpty())
     .annotate({
@@ -127,16 +222,42 @@ export const WordImportJsonSchemaDefinitionText = Formatter.formatJson(
 
 export const WordImportJsonExample = Formatter.formatJson(
   {
+    formatVersion: 1,
     words: [
       {
         description:
           "事業や活動など、特定の目的のために用意するお金。日常的なお金より改まった響きがあり、運営や投資の元手という感じがある。",
+        examples: [
+          {
+            note: "「資金を集める」は、活動に必要なお金を用意するときの自然な組み合わせ。",
+            template: `新しい事業の${WordPracticePresentation.WordMarker}を集める。`,
+            translation: "Raise funds for a new business.",
+          },
+          {
+            note: "「資金を調達する」は、ビジネスや公的な場面でよく使う。",
+            template: `銀行から${WordPracticePresentation.WordMarker}を調達した。`,
+            translation: "They secured financing from a bank.",
+          },
+        ],
         text: "資[し]金[きん]",
         translation: "funds; capital",
       },
       {
         description:
           "予定していない相手と偶然出くわすこと。単なる遭遇より突然の感じが強く、会話でも自然に使える。",
+        examples: [
+          {
+            template: `駅で昔の友達と${WordPracticePresentation.WordMarker}なんて思わなかった。`,
+            translation:
+              "I never thought I would unexpectedly run into an old friend at the station.",
+          },
+          {
+            note: "約束して会う場合には使わない。",
+            template: `旅行先で先生に${WordPracticePresentation.WordMarker}こともある。`,
+            translation:
+              "Sometimes you unexpectedly run into your teacher while traveling.",
+          },
+        ],
         text: "ばったり会[あ]う",
         translation: "to run into; to bump into",
       },
@@ -147,9 +268,77 @@ export const WordImportJsonExample = Formatter.formatJson(
   }
 );
 
+export const WordExampleImportJsonSchema = Schema.Struct({
+  formatVersion: Schema.Literal(1).annotate({
+    description: "Version of the example enrichment format.",
+  }),
+  operation: Schema.Literal("addExamples").annotate({
+    description:
+      "Explicitly identifies this payload as an update to existing words.",
+  }),
+  words: Schema.Array(WordExampleImportJsonWordSchema)
+    .check(Schema.isNonEmpty())
+    .annotate({
+      description:
+        "Existing words whose example catalogs should be expanded. Each word is processed independently.",
+    }),
+}).annotate({
+  description:
+    "JSON payload for appending practice examples to words already in the library.",
+  title: "Word example enrichment JSON",
+});
+
+export const WordExampleImportJsonSchemaDocument = Schema.toJsonSchemaDocument(
+  WordExampleImportJsonSchema
+);
+
+export const WordExampleImportJsonSchemaDefinition =
+  WordExampleImportJsonSchemaDocument.schema;
+
+export const WordExampleImportJsonSchemaDefinitionText = Formatter.formatJson(
+  WordExampleImportJsonSchemaDefinition,
+  {
+    space: 2,
+  }
+);
+
+export const WordExampleImportJsonExample = Formatter.formatJson(
+  {
+    formatVersion: 1,
+    operation: "addExamples",
+    words: [
+      {
+        examples: [
+          {
+            note: "「資金を提供する」は、事業や計画に必要なお金を出すときの自然な組み合わせ。",
+            template: `政府は新しい計画に${WordPracticePresentation.WordMarker}を提供した。`,
+            translation: "The government provided funding for the new plan.",
+          },
+          {
+            template: `十分な${WordPracticePresentation.WordMarker}が集まらず、計画は延期された。`,
+            translation:
+              "The plan was postponed because sufficient funding could not be raised.",
+          },
+        ],
+        text: "資[し]金[きん]",
+      },
+    ],
+  },
+  {
+    space: 2,
+  }
+);
+
 const _loadLibraryData = Effect.gen(function* () {
   const store = yield* IndexedDb.Store.Store;
-  const wordEntries = yield* store.listWords();
+  const storedWordEntries = yield* store.listWords();
+  const wordEntries = [...storedWordEntries].sort((left, right) => {
+    if ((left.archivedAt === undefined) === (right.archivedAt === undefined)) {
+      return 0;
+    }
+
+    return left.archivedAt === undefined ? -1 : 1;
+  });
 
   return {
     wordEntries,
@@ -159,13 +348,49 @@ const _loadLibraryData = Effect.gen(function* () {
 const _normalizeWordText = ({ text }: { readonly text: string }) =>
   FuriganaText.normalizePlainText({ text });
 
+const WordImportIssueFormatter = SchemaIssue.makeFormatterStandardSchemaV1();
+
+const _formatWordImportIssues = ({
+  issue,
+  wordIndex,
+}: {
+  readonly issue: SchemaIssue.Issue;
+  readonly wordIndex: number;
+}) => {
+  const formattedIssues = WordImportIssueFormatter(issue).issues;
+  const visibleIssues = formattedIssues.slice(0, 3).map((formattedIssue) => {
+    const formattedPath = formattedIssue.path
+      ?.map((segment) => {
+        const key = Predicate.hasProperty(segment, "key")
+          ? segment.key
+          : segment;
+
+        return typeof key === "number" ? `[${key}]` : `${String(key)}`;
+      })
+      .join(".")
+      .replaceAll(".[", "[");
+    const path =
+      formattedPath === undefined || formattedPath === ""
+        ? ""
+        : `${formattedPath}: `;
+
+    return `${path}${formattedIssue.message}`;
+  });
+
+  return `#${wordIndex + 1}: ${visibleIssues.join("; ")}${
+    formattedIssues.length > visibleIssues.length ? "; more errors" : ""
+  }`;
+};
+
 const _makeWordAndState = ({
   description,
+  examples,
   now,
   text,
   translation,
 }: {
   readonly description?: string;
+  readonly examples?: readonly IndexedDb.Domain.WordPracticeExample[];
   readonly now: number;
   readonly text: string;
   readonly translation: string;
@@ -176,6 +401,7 @@ const _makeWordAndState = ({
       id,
       createdAt: now,
       ...(description === undefined ? {} : { description }),
+      ...(examples === undefined ? {} : { examples }),
       text,
       translation,
       updatedAt: now,
@@ -216,6 +442,9 @@ export const makeLibraryMachine = ({
     schemas: {
       context: Schema.toStandardSchemaV1(LibraryContextSchema),
       events: {
+        archiveWord: Schema.toStandardSchemaV1(
+          Schema.Struct({ text: Schema.String })
+        ),
         cancelDeleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
         cancelWordDeletion: Schema.toStandardSchemaV1(Schema.Void),
         cancelWordEdit: Schema.toStandardSchemaV1(Schema.Void),
@@ -230,6 +459,9 @@ export const makeLibraryMachine = ({
         ),
         changeEditingWordTranslation: Schema.toStandardSchemaV1(
           Schema.Struct({ translation: Schema.String })
+        ),
+        changeExampleImportJsonText: Schema.toStandardSchemaV1(
+          Schema.Struct({ jsonText: Schema.String })
         ),
         changeWordDescription: Schema.toStandardSchemaV1(
           Schema.Struct({ description: Schema.String })
@@ -251,9 +483,14 @@ export const makeLibraryMachine = ({
           Schema.Struct({ text: Schema.String })
         ),
         exportWords: Schema.toStandardSchemaV1(Schema.Void),
+        importExamples: Schema.toStandardSchemaV1(Schema.Void),
         importWords: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        resetExampleImport: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
+        restoreWord: Schema.toStandardSchemaV1(
+          Schema.Struct({ text: Schema.String })
+        ),
         saveWord: Schema.toStandardSchemaV1(Schema.Void),
         selectWordView: Schema.toStandardSchemaV1(
           Schema.Struct({ view: WordLibraryViewSchema })
@@ -262,6 +499,58 @@ export const makeLibraryMachine = ({
       },
     },
     actorSources: {
+      changeWordArchive: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(ChangeWordArchiveInputSchema),
+          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              const text = input.text.trim();
+
+              if (text === "") {
+                return yield* Effect.fail(
+                  new Error("Choose a word before changing its archive.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWords();
+              const existingWordEntry = existingWordEntries.find(
+                (entry) => entry.text === text
+              );
+
+              if (existingWordEntry === undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not find that word in your library.")
+                );
+              }
+
+              const now = DateTime.toEpochMillis(yield* DateTime.now);
+              const wordEntry = yield* Schema.decodeEffect(
+                IndexedDb.Domain.Word
+              )({
+                id: existingWordEntry.id,
+                ...(input.action === "archive" ? { archivedAt: now } : {}),
+                createdAt: DateTime.toEpochMillis(existingWordEntry.createdAt),
+                ...(existingWordEntry.description === undefined
+                  ? {}
+                  : { description: existingWordEntry.description }),
+                ...(existingWordEntry.examples === undefined
+                  ? {}
+                  : { examples: existingWordEntry.examples }),
+                text: existingWordEntry.text,
+                translation: existingWordEntry.translation,
+                updatedAt: now,
+              });
+
+              yield* store.updateWord(wordEntry);
+
+              return yield* _loadLibraryData;
+            })
+          ),
+      }),
       deleteAllWordEntries: createAsyncLogic({
         schemas: {
           input: Schema.toStandardSchemaV1(DeleteAllWordsInputSchema),
@@ -334,8 +623,14 @@ export const makeLibraryMachine = ({
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              if (!EffectArray.isReadonlyArrayNonEmpty(input.wordEntries)) {
-                return yield* Effect.fail(new Error("No words to export."));
+              const activeWordEntries = input.wordEntries.filter(
+                (word) => word.archivedAt === undefined
+              );
+
+              if (!EffectArray.isReadonlyArrayNonEmpty(activeWordEntries)) {
+                return yield* Effect.fail(
+                  new Error("No active words to export.")
+                );
               }
 
               const clipboard = globalThis.navigator?.clipboard;
@@ -346,8 +641,8 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const exportText = input.wordEntries
-                .map((entry) => FuriganaText.toPlainText({ text: entry.text }))
+              const exportText = activeWordEntries
+                .map((entry) => entry.text)
                 .join("\n");
 
               yield* Effect.tryPromise({
@@ -356,7 +651,192 @@ export const makeLibraryMachine = ({
               });
 
               return {
-                copiedCount: input.wordEntries.length,
+                copiedCount: activeWordEntries.length,
+              };
+            })
+          ),
+      }),
+      importExampleEntries: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(ImportWordsInputSchema),
+          output: Schema.toStandardSchemaV1(ImportExamplesResultSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (input.jsonText.trim() === "") {
+                return yield* Effect.fail(
+                  new Error("Paste example JSON before importing.")
+                );
+              }
+
+              const importData = yield* Schema.decodeEffect(
+                Schema.fromJsonString(WordExampleImportJsonSourceSchema)
+              )(input.jsonText.replace(/^\uFEFF/, ""), {
+                errors: "all",
+                onExcessProperty: "error",
+              });
+
+              const skippedReasons: string[] = [];
+              const parsedWords: {
+                readonly examples: readonly IndexedDb.Domain.WordPracticeExample[];
+                readonly normalizedText: string;
+                readonly text: string;
+              }[] = [];
+
+              for (const [
+                wordIndex,
+                unknownWord,
+              ] of importData.words.entries()) {
+                const decodedWord = Schema.decodeUnknownResult(
+                  WordExampleImportJsonWordSchema,
+                  {
+                    errors: "all",
+                    onExcessProperty: "error",
+                  }
+                )(unknownWord);
+
+                if (Result.isFailure(decodedWord)) {
+                  skippedReasons.push(
+                    _formatWordImportIssues({
+                      issue: decodedWord.failure.issue,
+                      wordIndex,
+                    })
+                  );
+                  continue;
+                }
+
+                const examples = decodedWord.success.examples.map(
+                  (example) => ({
+                    ...(example.note === null || example.note === undefined
+                      ? {}
+                      : { note: example.note }),
+                    template: example.template,
+                    translation: example.translation,
+                  })
+                );
+                const text = decodedWord.success.text;
+                const normalizedText = _normalizeWordText({ text });
+                const displayText =
+                  FuriganaText.toPlainText({ text }) || `#${wordIndex + 1}`;
+
+                if (
+                  examples.some((example, exampleIndex) =>
+                    examples.some(
+                      (candidate, candidateIndex) =>
+                        candidateIndex < exampleIndex &&
+                        candidate.template.normalize("NFKC") ===
+                          example.template.normalize("NFKC")
+                    )
+                  )
+                ) {
+                  skippedReasons.push(
+                    `${displayText}: repeated example template`
+                  );
+                  continue;
+                }
+
+                if (
+                  parsedWords.some(
+                    (word) => word.normalizedText === normalizedText
+                  )
+                ) {
+                  skippedReasons.push(
+                    `${displayText}: repeated in example JSON`
+                  );
+                  continue;
+                }
+
+                parsedWords.push({
+                  examples,
+                  normalizedText,
+                  text,
+                });
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWords();
+              const now = DateTime.toEpochMillis(yield* DateTime.now);
+              let addedExampleCount = 0;
+              let unchangedCount = 0;
+              let updatedCount = 0;
+
+              for (const parsedWord of parsedWords) {
+                const existingWordEntry = existingWordEntries.find(
+                  (entry) =>
+                    _normalizeWordText({ text: entry.text }) ===
+                    parsedWord.normalizedText
+                );
+
+                if (existingWordEntry === undefined) {
+                  skippedReasons.push(
+                    `${FuriganaText.toPlainText({ text: parsedWord.text })}: not in library`
+                  );
+                  continue;
+                }
+
+                if (existingWordEntry.archivedAt !== undefined) {
+                  skippedReasons.push(
+                    `${FuriganaText.toPlainText({ text: parsedWord.text })}: archived`
+                  );
+                  continue;
+                }
+
+                let existingTemplateKeys = HashSet.empty<string>();
+
+                for (const example of existingWordEntry.examples ?? []) {
+                  existingTemplateKeys = HashSet.add(
+                    existingTemplateKeys,
+                    example.template.normalize("NFKC")
+                  );
+                }
+
+                const newExamples = parsedWord.examples.filter(
+                  (example) =>
+                    !HashSet.has(
+                      existingTemplateKeys,
+                      example.template.normalize("NFKC")
+                    )
+                );
+
+                if (!EffectArray.isReadonlyArrayNonEmpty(newExamples)) {
+                  unchangedCount += 1;
+                  continue;
+                }
+
+                const wordEntry = yield* Schema.decodeEffect(
+                  IndexedDb.Domain.Word
+                )({
+                  id: existingWordEntry.id,
+                  createdAt: DateTime.toEpochMillis(
+                    existingWordEntry.createdAt
+                  ),
+                  ...(existingWordEntry.description === undefined
+                    ? {}
+                    : { description: existingWordEntry.description }),
+                  examples: [
+                    ...(existingWordEntry.examples ?? []),
+                    ...newExamples,
+                  ],
+                  text: existingWordEntry.text,
+                  translation: existingWordEntry.translation,
+                  updatedAt: now,
+                });
+
+                yield* store.updateWord(wordEntry);
+                addedExampleCount += newExamples.length;
+                updatedCount += 1;
+              }
+
+              const libraryData = yield* _loadLibraryData;
+
+              return {
+                addedExampleCount,
+                skippedCount: skippedReasons.length,
+                skippedReasons: skippedReasons.slice(0, 5),
+                unchangedCount,
+                updatedCount,
+                wordEntries: libraryData.wordEntries,
               };
             })
           ),
@@ -377,11 +857,15 @@ export const makeLibraryMachine = ({
 
               const importData = yield* Schema.decodeEffect(
                 Schema.fromJsonString(WordImportJsonSourceSchema)
-              )(input.jsonText.replace(/^\uFEFF/, ""));
+              )(input.jsonText.replace(/^\uFEFF/, ""), {
+                errors: "all",
+                onExcessProperty: "error",
+              });
 
               const skippedReasons: string[] = [];
               const parsedWords: {
                 readonly description?: string;
+                readonly examples?: readonly IndexedDb.Domain.WordPracticeExample[];
                 readonly normalizedText: string;
                 readonly text: string;
                 readonly translation: string;
@@ -391,18 +875,37 @@ export const makeLibraryMachine = ({
                 wordIndex,
                 unknownWord,
               ] of importData.words.entries()) {
-                const decodedWord = Schema.decodeUnknownOption(
-                  WordImportJsonWordSchema
+                const decodedWord = Schema.decodeUnknownResult(
+                  WordImportJsonWordSchema,
+                  {
+                    errors: "all",
+                    onExcessProperty: "error",
+                  }
                 )(unknownWord);
 
-                if (Option.isNone(decodedWord)) {
-                  skippedReasons.push(`#${wordIndex + 1}: invalid word JSON`);
+                if (Result.isFailure(decodedWord)) {
+                  skippedReasons.push(
+                    _formatWordImportIssues({
+                      issue: decodedWord.failure.issue,
+                      wordIndex,
+                    })
+                  );
                   continue;
                 }
 
-                const description = decodedWord.value.description?.trim() ?? "";
-                const text = decodedWord.value.text.trim();
-                const translation = decodedWord.value.translation.trim();
+                const description =
+                  decodedWord.success.description?.trim() ?? "";
+                const examples = decodedWord.success.examples?.map(
+                  (example) => ({
+                    ...(example.note === null || example.note === undefined
+                      ? {}
+                      : { note: example.note }),
+                    template: example.template,
+                    translation: example.translation,
+                  })
+                );
+                const text = decodedWord.success.text;
+                const translation = decodedWord.success.translation;
                 const normalizedText = _normalizeWordText({ text });
                 const displayText =
                   FuriganaText.toPlainText({ text }) || `#${wordIndex + 1}`;
@@ -421,8 +924,26 @@ export const makeLibraryMachine = ({
                   continue;
                 }
 
+                if (
+                  examples !== undefined &&
+                  examples.some((example, exampleIndex) =>
+                    examples.some(
+                      (candidate, candidateIndex) =>
+                        candidateIndex < exampleIndex &&
+                        candidate.template.normalize("NFKC") ===
+                          example.template.normalize("NFKC")
+                    )
+                  )
+                ) {
+                  skippedReasons.push(
+                    `${displayText}: repeated example template`
+                  );
+                  continue;
+                }
+
                 parsedWords.push({
                   ...(description === "" ? {} : { description }),
+                  ...(examples === undefined ? {} : { examples }),
                   normalizedText,
                   text,
                   translation,
@@ -472,6 +993,7 @@ export const makeLibraryMachine = ({
                 newWords.map((word) =>
                   _makeWordAndState({
                     description: word.description,
+                    examples: word.examples,
                     now,
                     text: word.text,
                     translation: word.translation,
@@ -610,8 +1132,18 @@ export const makeLibraryMachine = ({
                 IndexedDb.Domain.Word
               )({
                 id: existingWordEntry.id,
+                ...(existingWordEntry.archivedAt === undefined
+                  ? {}
+                  : {
+                      archivedAt: DateTime.toEpochMillis(
+                        existingWordEntry.archivedAt
+                      ),
+                    }),
                 createdAt: DateTime.toEpochMillis(existingWordEntry.createdAt),
                 ...(description === "" ? {} : { description }),
+                ...(existingWordEntry.examples === undefined
+                  ? {}
+                  : { examples: existingWordEntry.examples }),
                 text,
                 translation,
                 updatedAt: now,
@@ -630,6 +1162,7 @@ export const makeLibraryMachine = ({
       editingWordDescription: "",
       editingWordText: "",
       editingWordTranslation: "",
+      exampleImportJsonText: "",
       importedWordCount: 0,
       wordDescription: "",
       wordEntries: [],
@@ -640,6 +1173,38 @@ export const makeLibraryMachine = ({
     },
     initial: "Loading",
     states: {
+      ChangingWordArchive: {
+        invoke: {
+          src: "changeWordArchive",
+          input: ({ context }) => ({
+            action: context.archiveAction ?? "archive",
+            text: context.changingArchiveWordText ?? "",
+          }),
+          onDone: ({ context, event }) => ({
+            target: "Ready",
+            context: {
+              archiveAction: undefined,
+              changingArchiveWordText: undefined,
+              message:
+                context.archiveAction === "restore"
+                  ? "Word restored."
+                  : "Word archived.",
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              archiveAction: undefined,
+              changingArchiveWordText: undefined,
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not change the word archive.",
+            },
+          }),
+        },
+      },
       ConfirmingAllWordsDeletion: {
         on: {
           cancelDeleteAllWords: {
@@ -786,6 +1351,61 @@ export const makeLibraryMachine = ({
           }),
         },
       },
+      ImportingExamples: {
+        invoke: {
+          src: "importExampleEntries",
+          input: ({ context }) => ({
+            jsonText: context.exampleImportJsonText,
+          }),
+          onDone: ({ event }) => {
+            const messages = [
+              `${event.output.updatedCount} ${
+                event.output.updatedCount === 1 ? "word" : "words"
+              } updated with ${event.output.addedExampleCount} ${
+                event.output.addedExampleCount === 1 ? "example" : "examples"
+              }.`,
+            ];
+
+            if (event.output.unchangedCount > 0) {
+              messages.push(
+                `${event.output.unchangedCount} unchanged because ${
+                  event.output.unchangedCount === 1
+                    ? "its example was"
+                    : "their examples were"
+                } already present.`
+              );
+            }
+
+            if (event.output.skippedCount > 0) {
+              messages.push(
+                `${event.output.skippedCount} skipped (${event.output.skippedReasons.join("; ")}${
+                  event.output.skippedCount > event.output.skippedReasons.length
+                    ? "; more skipped"
+                    : ""
+                }).`
+              );
+            }
+
+            return {
+              target: "Ready",
+              context: {
+                exampleImportJsonText: "",
+                message: messages.join(" "),
+                wordEntries: event.output.wordEntries,
+              },
+            };
+          },
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not add the examples.",
+            },
+          }),
+        },
+      },
       ImportingWords: {
         invoke: {
           src: "importWordEntries",
@@ -854,6 +1474,18 @@ export const makeLibraryMachine = ({
           Idle: {},
         },
         on: {
+          archiveWord: ({ event }) => ({
+            target: "ChangingWordArchive",
+            context: {
+              archiveAction: "archive",
+              changingArchiveWordText: event.text,
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              message: undefined,
+            },
+          }),
           cancelDeleteAllWords: {
             context: {
               deleteAllWordsConfirmation: "",
@@ -896,6 +1528,12 @@ export const makeLibraryMachine = ({
           changeEditingWordTranslation: ({ event }) => ({
             context: {
               editingWordTranslation: event.translation,
+              message: undefined,
+            },
+          }),
+          changeExampleImportJsonText: ({ event }) => ({
+            context: {
+              exampleImportJsonText: event.jsonText,
               message: undefined,
             },
           }),
@@ -975,6 +1613,9 @@ export const makeLibraryMachine = ({
               message: undefined,
             },
           },
+          importExamples: {
+            target: "ImportingExamples",
+          },
           importWords: {
             target: "ImportingWords",
           },
@@ -986,6 +1627,24 @@ export const makeLibraryMachine = ({
               importedWordCount: 0,
               message: undefined,
               wordImportJsonText: "",
+            },
+          },
+          restoreWord: ({ event }) => ({
+            target: "ChangingWordArchive",
+            context: {
+              archiveAction: "restore",
+              changingArchiveWordText: event.text,
+              editingWordDescription: "",
+              editingWordOriginalText: undefined,
+              editingWordText: "",
+              editingWordTranslation: "",
+              message: undefined,
+            },
+          }),
+          resetExampleImport: {
+            context: {
+              exampleImportJsonText: "",
+              message: undefined,
             },
           },
           saveWord: {

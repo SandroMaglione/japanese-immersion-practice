@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { PracticeOverviewMachine } from "@jip/machines";
+import { WordPracticePresentation } from "@jip/services";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import {
@@ -9,6 +10,7 @@ import {
   Check,
   CircleCheck,
   CircleX,
+  Lightbulb,
   LoaderCircle,
   RefreshCw,
 } from "lucide-react";
@@ -89,6 +91,39 @@ function PracticeRoute() {
   );
 }
 
+function PracticeExampleSentence({
+  template,
+  wordText,
+}: {
+  readonly template: string;
+  readonly wordText?: string;
+}) {
+  const markerIndex = template.indexOf(WordPracticePresentation.WordMarker);
+  const before = template.slice(0, markerIndex);
+  const after = template.slice(
+    markerIndex + WordPracticePresentation.WordMarker.length
+  );
+
+  return (
+    <>
+      <WordText text={before} />
+      {wordText === undefined ? (
+        <span
+          aria-label="Missing word"
+          className="mx-1 inline-block min-w-16 border-b-2 border-current align-baseline"
+        >
+          &nbsp;
+        </span>
+      ) : (
+        <span className="font-black text-sky">
+          <WordText text={wordText} />
+        </span>
+      )}
+      <WordText text={after} />
+    </>
+  );
+}
+
 function PracticeSession({
   actor,
   isRevealed,
@@ -109,6 +144,10 @@ function PracticeSession({
   const lastResult = useSelector(
     actor,
     (snapshot) => snapshot.context.lastResult
+  );
+  const hintVisible = useSelector(
+    actor,
+    (snapshot) => snapshot.context.hintVisible
   );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
   const stats = useSelector(actor, (snapshot) => snapshot.context.stats);
@@ -161,12 +200,31 @@ function PracticeSession({
                 size={34}
                 strokeWidth={2.5}
               />
-              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                <WordText text={lastResult.word.text} />
-              </h1>
+              {lastResult.example === undefined ? (
+                <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
+                  <WordText text={lastResult.word.text} />
+                </h1>
+              ) : (
+                <h1 className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
+                  <PracticeExampleSentence
+                    template={lastResult.example.template}
+                    wordText={lastResult.word.text}
+                  />
+                </h1>
+              )}
               <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
                 {lastResult.word.translation}
               </p>
+              {lastResult.example === undefined ? null : (
+                <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
+                  {lastResult.example.translation}
+                </p>
+              )}
+              {lastResult.example?.note === undefined ? null : (
+                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-gold">
+                  {lastResult.example.note}
+                </p>
+              )}
               {lastResult.word.description === undefined ? null : (
                 <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
                   {lastResult.word.description}
@@ -175,19 +233,40 @@ function PracticeSession({
             </div>
           ) : currentItem === undefined ? null : (
             <div className="grid w-full gap-2 sm:gap-3">
-              <h1
-                className={`w-full wrap-break-word font-normal leading-tight ${
-                  currentItem.word.description === undefined
-                    ? "text-2xl sm:text-3xl"
-                    : "text-xl sm:text-2xl"
-                }`}
-              >
-                {currentItem.word.description ?? currentItem.word.translation}
-              </h1>
-              {currentItem.word.description === undefined ? null : (
-                <p className="w-full wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:text-sm">
-                  {currentItem.word.translation}
-                </p>
+              {currentItem.example === undefined ? (
+                <>
+                  <h1
+                    className={`w-full wrap-break-word font-normal leading-tight ${
+                      currentItem.word.description === undefined
+                        ? "text-2xl sm:text-3xl"
+                        : "text-xl sm:text-2xl"
+                    }`}
+                  >
+                    {currentItem.word.description ??
+                      currentItem.word.translation}
+                  </h1>
+                  {currentItem.word.description === undefined ? null : (
+                    <p className="w-full wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:text-sm">
+                      {currentItem.word.translation}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h1 className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
+                    <PracticeExampleSentence
+                      template={currentItem.example.template}
+                    />
+                  </h1>
+                  {hintVisible ? (
+                    <p
+                      aria-live="polite"
+                      className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted"
+                    >
+                      {currentItem.example.translation}
+                    </p>
+                  ) : null}
+                </>
               )}
             </div>
           )}
@@ -219,6 +298,33 @@ function PracticeSession({
           </Tooltip.Root>
         ) : (
           <div className="mt-10 flex w-full min-w-0 gap-2">
+            {currentItem?.example === undefined || hintVisible ? null : (
+              <Tooltip.Root>
+                <Tooltip.Trigger
+                  render={
+                    <Button
+                      type="button"
+                      aria-label="Show hint"
+                      className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+                      disabled={isSubmitting}
+                      focusableWhenDisabled
+                      onClick={() => {
+                        actor.trigger.showHint();
+                      }}
+                    />
+                  }
+                >
+                  <Lightbulb aria-hidden="true" size={20} strokeWidth={2.5} />
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                  <Tooltip.Positioner sideOffset={8}>
+                    <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
+                      Show hint
+                    </Tooltip.Popup>
+                  </Tooltip.Positioner>
+                </Tooltip.Portal>
+              </Tooltip.Root>
+            )}
             <label className="sr-only" htmlFor="practice-response">
               Japanese word
             </label>

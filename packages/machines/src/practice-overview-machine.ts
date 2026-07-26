@@ -2,6 +2,7 @@ import { IndexedDb } from "@jip/indexeddb";
 import {
   FuriganaText,
   WordMemoryScheduler,
+  WordPracticePresentation,
   WordSessionSelection,
 } from "@jip/services";
 import { DateTime, Effect, Schema } from "effect";
@@ -23,6 +24,7 @@ const SessionSelectionStateSchema = Schema.Struct({
 });
 
 const PracticeItemSchema = Schema.Struct({
+  example: Schema.optionalKey(IndexedDb.Domain.WordPracticeExample),
   kind: IndexedDb.Domain.WordPracticeKind,
   source: IndexedDb.Domain.WordPracticeSource,
   state: IndexedDb.Domain.WordMemoryState,
@@ -40,6 +42,7 @@ const PracticeSessionStatsSchema = Schema.Struct({
 const PracticeResultSchema = Schema.Struct({
   changedSchedule: Schema.Boolean,
   difficulty: Schema.Number,
+  example: Schema.optionalKey(IndexedDb.Domain.WordPracticeExample),
   isCorrect: Schema.Boolean,
   kind: IndexedDb.Domain.WordPracticeKind,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
@@ -70,6 +73,7 @@ const PracticeOverviewContextSchema = Schema.Struct({
   currentItem: Schema.optionalKey(PracticeItemSchema),
   currentResponse: Schema.String,
   dueReviewCount: Schema.Number,
+  hintVisible: Schema.Boolean,
   lastResult: Schema.optionalKey(PracticeResultSchema),
   message: Schema.optionalKey(Schema.String),
   nextItem: Schema.optionalKey(PracticeItemSchema),
@@ -255,10 +259,16 @@ const _loadNextPracticeItem = ({
       selection,
       state: serviceSelectionState,
     });
+    const example = WordPracticePresentation.selectExample({
+      attemptCount: state.attemptCount,
+      examples: word.examples ?? [],
+      wordId: word.id,
+    });
 
     return {
       dueReviewCount: storedPools.dueReviewCount,
       item: {
+        ...(example === undefined ? {} : { example }),
         kind: selection.kind,
         source: selection.source,
         state,
@@ -283,6 +293,7 @@ export const makePracticeOverviewMachine = ({
           Schema.Struct({ response: Schema.String })
         ),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        showHint: Schema.toStandardSchemaV1(Schema.Void),
         submit: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
@@ -325,6 +336,17 @@ export const makePracticeOverviewMachine = ({
               if (currentItem === undefined || sessionId === undefined) {
                 return yield* Effect.fail(
                   new Error("Could not find a word to practice.")
+                );
+              }
+
+              const storedWord = yield* store.getWord(currentItem.word.id);
+
+              if (
+                storedWord === undefined ||
+                storedWord.archivedAt !== undefined
+              ) {
+                return yield* Effect.fail(
+                  new Error("That word is no longer active.")
                 );
               }
 
@@ -446,6 +468,9 @@ export const makePracticeOverviewMachine = ({
                 result: {
                   changedSchedule: transition.changedSchedule,
                   difficulty: transition.card.difficulty,
+                  ...(currentItem.example === undefined
+                    ? {}
+                    : { example: currentItem.example }),
                   isCorrect,
                   kind: currentItem.kind,
                   nextReviewAt: DateTime.makeUnsafe(
@@ -468,6 +493,7 @@ export const makePracticeOverviewMachine = ({
     context: {
       currentResponse: "",
       dueReviewCount: 0,
+      hintVisible: false,
       selectionState: InitialSelectionState,
       stats: InitialStats,
     },
@@ -482,6 +508,7 @@ export const makePracticeOverviewMachine = ({
               currentItem: event.output.item,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
+              hintVisible: false,
               lastResult: undefined,
               message: undefined,
               nextItem: undefined,
@@ -512,6 +539,11 @@ export const makePracticeOverviewMachine = ({
           refresh: {
             target: "Loading",
           },
+          showHint: {
+            context: {
+              hintVisible: true,
+            },
+          },
           submit: {
             target: "Submitting",
           },
@@ -534,6 +566,7 @@ export const makePracticeOverviewMachine = ({
               currentItem: undefined,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
+              hintVisible: false,
               lastResult: event.output.result,
               message: event.output.message,
               nextItem: event.output.nextItem,
@@ -562,6 +595,7 @@ export const makePracticeOverviewMachine = ({
               ? {
                   target: "Loading",
                   context: {
+                    hintVisible: false,
                     lastResult: undefined,
                   },
                 }
@@ -569,6 +603,7 @@ export const makePracticeOverviewMachine = ({
                   target: "Ready",
                   context: {
                     currentItem: context.nextItem,
+                    hintVisible: false,
                     lastResult: undefined,
                     nextItem: undefined,
                   },

@@ -8,6 +8,7 @@
   },
   "scripts": {
     "export:schemas": "NODE_OPTIONS='--experimental-strip-types' node scripts/export-json-schemas.ts",
+    "test": "node --test --experimental-strip-types src/*.test.ts",
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {

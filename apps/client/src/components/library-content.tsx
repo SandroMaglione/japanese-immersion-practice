@@ -7,7 +7,19 @@ import { Tooltip } from "@base-ui/react/tooltip";
 import { LibraryMachine } from "@jip/machines";
 import { useMachine } from "@xstate/react";
 import { Array as EffectArray } from "effect";
-import { Check, Copy, Pencil, Save, Trash2, Upload, X } from "lucide-react";
+import {
+  Archive,
+  ArchiveRestore,
+  BookPlus,
+  Check,
+  Copy,
+  LoaderCircle,
+  Pencil,
+  Save,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 
 import { formatDateTime } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
@@ -56,9 +68,11 @@ export function WordLibraryContent() {
     "ConfirmingAllWordsDeletion"
   );
   const confirmingWordDeletion = snapshot.matches("ConfirmingWordDeletion");
+  const changingWordArchive = snapshot.matches("ChangingWordArchive");
   const deletingAllWords = snapshot.matches("DeletingAllWords");
   const deletingWord = snapshot.matches("DeletingWord");
   const exportingWords = snapshot.matches("ExportingWords");
+  const importingExamples = snapshot.matches("ImportingExamples");
   const importingWords = snapshot.matches("ImportingWords");
   const savingWord = snapshot.matches("SavingWord");
   const updatingWord = snapshot.matches("UpdatingWord");
@@ -77,7 +91,7 @@ export function WordLibraryContent() {
       className="flex flex-col gap-6"
       value={snapshot.context.wordView}
       onValueChange={(value) => {
-        if (value !== "batch" && value !== "single") {
+        if (value !== "batch" && value !== "examples" && value !== "single") {
           return;
         }
 
@@ -94,7 +108,15 @@ export function WordLibraryContent() {
           disabled={wordDeletionActive}
         >
           <Upload size={16} strokeWidth={2.5} />
-          Batch import
+          New words
+        </Tabs.Tab>
+        <Tabs.Tab
+          value="examples"
+          className={_entryTabClassName}
+          disabled={wordDeletionActive}
+        >
+          <BookPlus size={16} strokeWidth={2.5} />
+          Add examples
         </Tabs.Tab>
         <Tabs.Tab
           value="single"
@@ -158,6 +180,60 @@ export function WordLibraryContent() {
                 >
                   <Upload size={16} strokeWidth={2.5} />
                   {importingWords ? "Importing" : "Import"}
+                </Button>
+              </div>
+            </div>
+          </Form>
+        </Tabs.Panel>
+        <Tabs.Panel value="examples">
+          <Form
+            className="pb-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              actor.trigger.importExamples();
+            }}
+          >
+            <div className="grid gap-4">
+              <Field.Root
+                className="grid gap-2"
+                disabled={importingExamples || wordDeletionActive}
+              >
+                <Field.Label className="text-sm font-black">
+                  Example JSON
+                </Field.Label>
+                <Field.Control
+                  render={<textarea />}
+                  className={`${textAreaControlClassName} min-h-80 font-mono text-sm leading-6 placeholder:text-ink-muted/70`}
+                  disabled={importingExamples || wordDeletionActive}
+                  placeholder={LibraryMachine.WordExampleImportJsonExample}
+                  value={snapshot.context.exampleImportJsonText}
+                  onValueChange={(jsonText) => {
+                    actor.trigger.changeExampleImportJsonText({
+                      jsonText,
+                    });
+                  }}
+                />
+              </Field.Root>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  className={quietButtonClassName}
+                  disabled={importingExamples || wordDeletionActive}
+                  focusableWhenDisabled
+                  onClick={() => {
+                    actor.trigger.resetExampleImport();
+                  }}
+                >
+                  Clear
+                </Button>
+                <Button
+                  type="submit"
+                  className={primaryButtonClassName}
+                  disabled={importingExamples || wordDeletionActive}
+                  focusableWhenDisabled
+                >
+                  <BookPlus size={16} strokeWidth={2.5} />
+                  {importingExamples ? "Adding" : "Add examples"}
                 </Button>
               </div>
             </div>
@@ -245,10 +321,12 @@ export function WordLibraryContent() {
                 <AlertDialog.Trigger
                   className={secondaryButtonClassName}
                   disabled={
+                    changingWordArchive ||
                     confirmingWordDeletion ||
                     deletingAllWords ||
                     deletingWord ||
                     exportingWords ||
+                    importingExamples ||
                     importingWords ||
                     savingWord ||
                     updatingWord
@@ -317,10 +395,12 @@ export function WordLibraryContent() {
                 type="button"
                 className={secondaryButtonClassName}
                 disabled={
+                  changingWordArchive ||
                   confirmingWordDeletion ||
                   deletingAllWords ||
                   deletingWord ||
                   exportingWords ||
+                  importingExamples ||
                   importingWords ||
                   savingWord ||
                   updatingWord
@@ -339,7 +419,7 @@ export function WordLibraryContent() {
                   ? "Exporting"
                   : wordExportCopied
                     ? "Copied"
-                    : "Export words"}
+                    : "Export word list"}
               </Button>
             </div>
           ) : null}
@@ -350,6 +430,10 @@ export function WordLibraryContent() {
           ) : (
             <div className="divide-y divide-line">
               {snapshot.context.wordEntries.map((entry) => {
+                const archived = entry.archivedAt !== undefined;
+                const changingThisWordArchive =
+                  changingWordArchive &&
+                  snapshot.context.changingArchiveWordText === entry.text;
                 const confirmingDeletionForWord =
                   confirmingWordDeletion &&
                   snapshot.context.deletingWordText === entry.text;
@@ -360,7 +444,12 @@ export function WordLibraryContent() {
                   snapshot.context.editingWordOriginalText === entry.text;
 
                 return (
-                  <article key={entry.text} className="grid gap-3 py-4">
+                  <article
+                    key={entry.text}
+                    className={`grid gap-3 py-4 ${
+                      archived ? "opacity-55" : ""
+                    }`}
+                  >
                     <div
                       className={
                         editingWord
@@ -437,6 +526,24 @@ export function WordLibraryContent() {
                           <div className="mt-1 text-xs font-bold text-ink-muted">
                             {formatDateTime({ dateTime: entry.updatedAt })}
                           </div>
+                          {archived ? (
+                            <div className="mt-1 inline-flex items-center gap-1 text-xs font-black text-ink-muted">
+                              <Archive
+                                aria-hidden="true"
+                                size={12}
+                                strokeWidth={2.5}
+                              />
+                              Archived
+                            </div>
+                          ) : null}
+                          {entry.examples === undefined ? null : (
+                            <div className="mt-1 text-xs font-black text-gold">
+                              {entry.examples.length}{" "}
+                              {entry.examples.length === 1
+                                ? "example"
+                                : "examples"}
+                            </div>
+                          )}
                           {entry.description === undefined ? null : (
                             <p className="mt-2 text-sm font-semibold leading-6 text-ink-muted">
                               {entry.description}
@@ -512,7 +619,9 @@ export function WordLibraryContent() {
                                     aria-label="Edit word"
                                     className={iconButtonClassName}
                                     disabled={
-                                      updatingWord || wordDeletionActive
+                                      changingWordArchive ||
+                                      updatingWord ||
+                                      wordDeletionActive
                                     }
                                     focusableWhenDisabled
                                     onClick={() => {
@@ -531,6 +640,58 @@ export function WordLibraryContent() {
                                     className={tooltipPopupClassName}
                                   >
                                     Edit word
+                                  </Tooltip.Popup>
+                                </Tooltip.Positioner>
+                              </Tooltip.Portal>
+                            </Tooltip.Root>
+                            <Tooltip.Root>
+                              <Tooltip.Trigger
+                                render={
+                                  <Button
+                                    type="button"
+                                    aria-label={
+                                      archived ? "Restore word" : "Archive word"
+                                    }
+                                    className={iconButtonClassName}
+                                    disabled={
+                                      changingWordArchive ||
+                                      updatingWord ||
+                                      wordDeletionActive
+                                    }
+                                    focusableWhenDisabled
+                                    onClick={() => {
+                                      if (archived) {
+                                        actor.trigger.restoreWord({
+                                          text: entry.text,
+                                        });
+                                        return;
+                                      }
+
+                                      actor.trigger.archiveWord({
+                                        text: entry.text,
+                                      });
+                                    }}
+                                  />
+                                }
+                              >
+                                {changingThisWordArchive ? (
+                                  <LoaderCircle
+                                    className="animate-spin"
+                                    size={16}
+                                    strokeWidth={2.5}
+                                  />
+                                ) : archived ? (
+                                  <ArchiveRestore size={16} strokeWidth={2.5} />
+                                ) : (
+                                  <Archive size={16} strokeWidth={2.5} />
+                                )}
+                              </Tooltip.Trigger>
+                              <Tooltip.Portal>
+                                <Tooltip.Positioner sideOffset={8}>
+                                  <Tooltip.Popup
+                                    className={tooltipPopupClassName}
+                                  >
+                                    {archived ? "Restore word" : "Archive word"}
                                   </Tooltip.Popup>
                                 </Tooltip.Positioner>
                               </Tooltip.Portal>
@@ -562,6 +723,7 @@ export function WordLibraryContent() {
                                       aria-label="Delete word"
                                       className={iconButtonClassName}
                                       disabled={
+                                        changingWordArchive ||
                                         updatingWord ||
                                         deletingWord ||
                                         deletingAllWords ||

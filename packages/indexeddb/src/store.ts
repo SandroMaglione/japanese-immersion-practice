@@ -1,4 +1,11 @@
-import { Array as EffectArray, Context, DateTime, Effect, Layer } from "effect";
+import {
+  Array as EffectArray,
+  Context,
+  DateTime,
+  Effect,
+  HashSet,
+  Layer,
+} from "effect";
 
 import * as Database from "./database.ts";
 import * as Domain from "./domain.ts";
@@ -8,36 +15,6 @@ export type StoreService = Context.Service.Shape<typeof Store>;
 export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
   make: Effect.gen(function* () {
     const db = yield* Database.JapanesePracticeDatabase.getQueryBuilder;
-
-    const listDueMemoryStates = ({
-      limit,
-      now,
-      phase,
-    }: {
-      readonly limit: number;
-      readonly now: number;
-      readonly phase: "learning" | "review" | "relearning";
-    }) =>
-      db
-        .from("word_memory_states")
-        .select("byPhaseAndDueAt")
-        .between([phase], [phase, now])
-        .limit(limit);
-
-    const listFutureMemoryStates = ({
-      limit,
-      now,
-      phase,
-    }: {
-      readonly limit: number;
-      readonly now: number;
-      readonly phase: "learning" | "review" | "relearning";
-    }) =>
-      db
-        .from("word_memory_states")
-        .select("byPhaseAndDueAt")
-        .between([phase, now], [phase, []], { excludeLowerBound: true })
-        .limit(limit);
 
     return {
       listWords: Effect.fn("Store.listWords")(function* () {
@@ -173,65 +150,95 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
           readonly limit: number;
           readonly now: number;
         }) {
-          const [
-            dueLearning,
-            dueRelearning,
-            dueReview,
-            futureLearning,
-            futureRelearning,
-            futureReview,
-            oldestPracticedReview,
-            newWords,
-            learningCount,
-            relearningCount,
-            dueReviewCount,
-          ] = yield* Effect.all([
-            listDueMemoryStates({ limit, now, phase: "learning" }),
-            listDueMemoryStates({ limit, now, phase: "relearning" }),
-            listDueMemoryStates({ limit, now, phase: "review" }),
-            listFutureMemoryStates({ limit, now, phase: "learning" }),
-            listFutureMemoryStates({ limit, now, phase: "relearning" }),
-            listFutureMemoryStates({ limit, now, phase: "review" }),
-            db
-              .from("word_memory_states")
-              .select("byPhaseAndLastPracticedAt")
-              .between(["review"], ["review", []])
-              .limit(limit),
-            db
-              .from("word_memory_states")
-              .select("byPhase")
-              .equals("new")
-              .limit(limit),
-            db.from("word_memory_states").count("byPhase").equals("learning"),
-            db.from("word_memory_states").count("byPhase").equals("relearning"),
-            db
-              .from("word_memory_states")
-              .count("byPhaseAndDueAt")
-              .between(["review"], ["review", now]),
+          const [states, words] = yield* Effect.all([
+            db.from("word_memory_states").select(),
+            db.from("words").select(),
           ]);
-          const extra = [...futureReview, ...oldestPracticedReview].filter(
-            (state, index, states) =>
-              states.findIndex(
-                (candidate) => candidate.wordId === state.wordId
-              ) === index
-          );
+          let activeWordIds = HashSet.empty<Domain.WordId>();
 
-          return {
-            activeLearningCount: learningCount + relearningCount,
-            dueLearning: [...dueLearning, ...dueRelearning].sort(
+          for (const word of words) {
+            if (word.archivedAt === undefined) {
+              activeWordIds = HashSet.add(activeWordIds, word.id);
+            }
+          }
+
+          const activeStates = states.filter((state) =>
+            HashSet.has(activeWordIds, state.wordId)
+          );
+          const dueLearning = activeStates
+            .filter(
+              (state) =>
+                (state.phase === "learning" || state.phase === "relearning") &&
+                DateTime.toEpochMillis(state.dueAt) <= now
+            )
+            .sort(
               (left, right) =>
                 DateTime.toEpochMillis(left.dueAt) -
                 DateTime.toEpochMillis(right.dueAt)
-            ),
-            dueReview,
-            dueReviewCount,
-            earlyLearning: [...futureLearning, ...futureRelearning]
-              .sort(
-                (left, right) =>
-                  DateTime.toEpochMillis(left.dueAt) -
-                  DateTime.toEpochMillis(right.dueAt)
-              )
-              .slice(0, limit),
+            )
+            .slice(0, limit);
+          const dueReviewStates = activeStates
+            .filter(
+              (state) =>
+                state.phase === "review" &&
+                DateTime.toEpochMillis(state.dueAt) <= now
+            )
+            .sort(
+              (left, right) =>
+                DateTime.toEpochMillis(left.dueAt) -
+                DateTime.toEpochMillis(right.dueAt)
+            );
+          const earlyLearning = activeStates
+            .filter(
+              (state) =>
+                (state.phase === "learning" || state.phase === "relearning") &&
+                DateTime.toEpochMillis(state.dueAt) > now
+            )
+            .sort(
+              (left, right) =>
+                DateTime.toEpochMillis(left.dueAt) -
+                DateTime.toEpochMillis(right.dueAt)
+            )
+            .slice(0, limit);
+          const futureReview = activeStates
+            .filter(
+              (state) =>
+                state.phase === "review" &&
+                DateTime.toEpochMillis(state.dueAt) > now
+            )
+            .sort(
+              (left, right) =>
+                DateTime.toEpochMillis(left.dueAt) -
+                DateTime.toEpochMillis(right.dueAt)
+            )
+            .slice(0, limit);
+          const oldestPracticedReview = activeStates
+            .filter((state) => state.phase === "review")
+            .sort(
+              (left, right) =>
+                DateTime.toEpochMillis(left.lastPracticedAt) -
+                DateTime.toEpochMillis(right.lastPracticedAt)
+            )
+            .slice(0, limit);
+          const extra = [...futureReview, ...oldestPracticedReview].filter(
+            (state, index, candidates) =>
+              candidates.findIndex(
+                (candidate) => candidate.wordId === state.wordId
+              ) === index
+          );
+          const newWords = activeStates
+            .filter((state) => state.phase === "new")
+            .slice(0, limit);
+
+          return {
+            activeLearningCount: activeStates.filter(
+              (state) =>
+                state.phase === "learning" || state.phase === "relearning"
+            ).length,
+            dueLearning,
+            dueReview: dueReviewStates.slice(0, limit),
+            dueReviewCount: dueReviewStates.length,
+            earlyLearning,
             extra,
             newWords,
           };

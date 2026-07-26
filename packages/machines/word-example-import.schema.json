@@ -4,24 +4,18 @@
     "formatVersion": {
       "type": "number",
       "enum": [1],
-      "description": "Version of the word import format."
+      "description": "Version of the example enrichment format."
+    },
+    "operation": {
+      "type": "string",
+      "enum": ["addExamples"],
+      "description": "Explicitly identifies this payload as an update to existing words."
     },
     "words": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Optional Japanese definition-style clue for recall: clear meaning, natural contexts, register or formality, tone, common pairings, and contrast with similar words, phrased without naming the target word."
-          },
           "examples": {
             "type": "array",
             "items": {
@@ -80,7 +74,7 @@
             "allOf": [
               {
                 "minItems": 1,
-                "description": "Alternative contextual prompts rotated during practice. A malformed example rejects this word while other valid words remain importable."
+                "description": "Examples to append to an existing word. A malformed example rejects this word while other valid words remain importable."
               }
             ]
           },
@@ -92,36 +86,24 @@
               },
               {
                 "minLength": 1,
-                "description": "Japanese word or expression to import. Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is."
-              }
-            ]
-          },
-          "translation": {
-            "type": "string",
-            "allOf": [
-              {
-                "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
-              },
-              {
-                "minLength": 1,
-                "description": "Plain translations for this Japanese word, separated by semicolons and a single space, with no semicolon at the end. Example: qualifications; requirements; capabilities. Do not include explanations, sentences, numbering, or extra notes."
+                "description": "Existing Japanese word or expression to enrich. Use the exact text produced by the library export. Furigana notation: add each reading in square brackets immediately after the character it belongs to, with no spaces, for example 資[し]金[きん]. Do not group readings after a multi-character word. For kana-only words, write the word as-is."
               }
             ]
           }
         },
-        "required": ["text", "translation"],
+        "required": ["examples", "text"],
         "additionalProperties": false
       },
       "allOf": [
         {
           "minItems": 1,
-          "description": "Words to import into the word library."
+          "description": "Existing words whose example catalogs should be expanded. Each word is processed independently."
         }
       ]
     }
   },
-  "required": ["formatVersion", "words"],
+  "required": ["formatVersion", "operation", "words"],
   "additionalProperties": false,
-  "title": "Word import JSON",
-  "description": "JSON payload for importing Japanese vocabulary words into the word library."
+  "title": "Word example enrichment JSON",
+  "description": "JSON payload for appending practice examples to words already in the library."
 }

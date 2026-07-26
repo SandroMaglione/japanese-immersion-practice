@@ -100,11 +100,21 @@ export const WordPracticeSource = Schema.Literals([
 
 export type WordPracticeSource = typeof WordPracticeSource.Type;
 
+export class WordPracticeExample extends Schema.Class<WordPracticeExample>(
+  "WordPracticeExample"
+)({
+  template: NonEmptyString,
+  translation: NonEmptyString,
+  note: Schema.optional(NonEmptyString),
+}) {}
+
 export class Word extends Schema.Class<Word>("Word")({
   id: WordId,
   text: NonEmptyString,
   translation: NonEmptyString,
   description: Schema.optional(NonEmptyString),
+  examples: Schema.optional(Schema.Array(WordPracticeExample)),
+  archivedAt: Schema.optional(Schema.DateTimeUtcFromMillis),
   createdAt: Schema.DateTimeUtcFromMillis,
   updatedAt: Schema.DateTimeUtcFromMillis,
 }) {}
