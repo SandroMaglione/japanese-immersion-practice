@@ -30,8 +30,9 @@ export const DeleteAllWordsConfirmationText = "delete all my words";
 
 const LibraryContextSchema = Schema.Struct({
   archiveAction: Schema.optionalKey(WordArchiveActionSchema),
-  changingArchiveWordText: Schema.optionalKey(Schema.String),
+  bulkDeleteConfirmation: Schema.String,
   deleteAllWordsConfirmation: Schema.String,
+  deleteSelectionIncludesAllWords: Schema.Boolean,
   deletingWordText: Schema.optionalKey(Schema.String),
   editingWordDescription: Schema.String,
   editingWordOriginalText: Schema.optionalKey(Schema.String),
@@ -40,6 +41,8 @@ const LibraryContextSchema = Schema.Struct({
   exampleImportJsonText: Schema.String,
   importedWordCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
+  pendingWordIds: Schema.Array(IndexedDb.Domain.WordId),
+  selectedWordIds: Schema.Array(IndexedDb.Domain.WordId),
   wordDescription: Schema.String,
   wordEntries: Schema.Array(IndexedDb.Domain.Word),
   wordImportJsonText: Schema.String,
@@ -71,7 +74,23 @@ const DeleteAllWordsInputSchema = Schema.Struct({
 
 const ChangeWordArchiveInputSchema = Schema.Struct({
   action: WordArchiveActionSchema,
-  text: Schema.String,
+  wordIds: Schema.Array(IndexedDb.Domain.WordId),
+});
+
+const ChangeWordArchiveResultSchema = Schema.Struct({
+  changedCount: Schema.Number,
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+});
+
+const DeleteWordsInputSchema = Schema.Struct({
+  confirmation: Schema.String,
+  requiresTypedConfirmation: Schema.Boolean,
+  wordIds: Schema.Array(IndexedDb.Domain.WordId),
+});
+
+const DeleteWordsResultSchema = Schema.Struct({
+  deletedCount: Schema.Number,
+  wordEntries: Schema.Array(IndexedDb.Domain.Word),
 });
 
 const ImportWordsInputSchema = Schema.Struct({
@@ -96,6 +115,7 @@ const ImportExamplesResultSchema = Schema.Struct({
 
 const ExportWordsInputSchema = Schema.Struct({
   wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordIds: Schema.Array(IndexedDb.Domain.WordId),
 });
 
 const ExportWordsResultSchema = Schema.Struct({
@@ -443,11 +463,17 @@ export const makeLibraryMachine = ({
       context: Schema.toStandardSchemaV1(LibraryContextSchema),
       events: {
         archiveWord: Schema.toStandardSchemaV1(
-          Schema.Struct({ text: Schema.String })
+          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
         ),
+        archiveSelectedWords: Schema.toStandardSchemaV1(Schema.Void),
+        cancelArchiveWords: Schema.toStandardSchemaV1(Schema.Void),
         cancelDeleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        cancelDeleteSelectedWords: Schema.toStandardSchemaV1(Schema.Void),
         cancelWordDeletion: Schema.toStandardSchemaV1(Schema.Void),
         cancelWordEdit: Schema.toStandardSchemaV1(Schema.Void),
+        changeBulkDeleteConfirmation: Schema.toStandardSchemaV1(
+          Schema.Struct({ confirmation: Schema.String })
+        ),
         changeDeleteAllWordsConfirmation: Schema.toStandardSchemaV1(
           Schema.Struct({ confirmation: Schema.String })
         ),
@@ -476,6 +502,7 @@ export const makeLibraryMachine = ({
           Schema.Struct({ translation: Schema.String })
         ),
         deleteAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        deleteSelectedWords: Schema.toStandardSchemaV1(Schema.Void),
         deleteWord: Schema.toStandardSchemaV1(
           Schema.Struct({ text: Schema.String })
         ),
@@ -485,15 +512,22 @@ export const makeLibraryMachine = ({
         exportWords: Schema.toStandardSchemaV1(Schema.Void),
         importExamples: Schema.toStandardSchemaV1(Schema.Void),
         importWords: Schema.toStandardSchemaV1(Schema.Void),
+        confirmArchiveWords: Schema.toStandardSchemaV1(Schema.Void),
+        confirmDeleteSelectedWords: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        clearWordSelection: Schema.toStandardSchemaV1(Schema.Void),
         resetExampleImport: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
         restoreWord: Schema.toStandardSchemaV1(
-          Schema.Struct({ text: Schema.String })
+          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
         ),
         saveWord: Schema.toStandardSchemaV1(Schema.Void),
         selectWordView: Schema.toStandardSchemaV1(
           Schema.Struct({ view: WordLibraryViewSchema })
+        ),
+        toggleAllWords: Schema.toStandardSchemaV1(Schema.Void),
+        toggleWordSelection: Schema.toStandardSchemaV1(
+          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
         ),
         updateWord: Schema.toStandardSchemaV1(Schema.Void),
       },
@@ -502,52 +536,69 @@ export const makeLibraryMachine = ({
       changeWordArchive: createAsyncLogic({
         schemas: {
           input: Schema.toStandardSchemaV1(ChangeWordArchiveInputSchema),
-          output: Schema.toStandardSchemaV1(LibraryDataSchema),
+          output: Schema.toStandardSchemaV1(ChangeWordArchiveResultSchema),
         },
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const text = input.text.trim();
-
-              if (text === "") {
+              if (!EffectArray.isReadonlyArrayNonEmpty(input.wordIds)) {
                 return yield* Effect.fail(
-                  new Error("Choose a word before changing its archive.")
+                  new Error("Select at least one word.")
                 );
               }
 
               const store = yield* IndexedDb.Store.Store;
               const existingWordEntries = yield* store.listWords();
-              const existingWordEntry = existingWordEntries.find(
-                (entry) => entry.text === text
-              );
+              const targetedWordEntries = input.wordIds.flatMap((wordId) => {
+                const word = existingWordEntries.find(
+                  (entry) => entry.id === wordId
+                );
 
-              if (existingWordEntry === undefined) {
+                return word === undefined ? [] : [word];
+              });
+
+              if (targetedWordEntries.length !== input.wordIds.length) {
                 return yield* Effect.fail(
-                  new Error("Could not find that word in your library.")
+                  new Error(
+                    "One or more selected words are no longer in the library."
+                  )
                 );
               }
 
+              const changedWordEntries = targetedWordEntries.filter((word) =>
+                input.action === "archive"
+                  ? word.archivedAt === undefined
+                  : word.archivedAt !== undefined
+              );
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const wordEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.Word
-              )({
-                id: existingWordEntry.id,
-                ...(input.action === "archive" ? { archivedAt: now } : {}),
-                createdAt: DateTime.toEpochMillis(existingWordEntry.createdAt),
-                ...(existingWordEntry.description === undefined
-                  ? {}
-                  : { description: existingWordEntry.description }),
-                ...(existingWordEntry.examples === undefined
-                  ? {}
-                  : { examples: existingWordEntry.examples }),
-                text: existingWordEntry.text,
-                translation: existingWordEntry.translation,
-                updatedAt: now,
-              });
+              const updatedWords = yield* Effect.all(
+                changedWordEntries.map((existingWordEntry) =>
+                  Schema.decodeEffect(IndexedDb.Domain.Word)({
+                    id: existingWordEntry.id,
+                    ...(input.action === "archive" ? { archivedAt: now } : {}),
+                    createdAt: DateTime.toEpochMillis(
+                      existingWordEntry.createdAt
+                    ),
+                    ...(existingWordEntry.description === undefined
+                      ? {}
+                      : { description: existingWordEntry.description }),
+                    ...(existingWordEntry.examples === undefined
+                      ? {}
+                      : { examples: existingWordEntry.examples }),
+                    text: existingWordEntry.text,
+                    translation: existingWordEntry.translation,
+                    updatedAt: now,
+                  })
+                )
+              );
 
-              yield* store.updateWord(wordEntry);
+              yield* store.updateWords(updatedWords);
+              const libraryData = yield* _loadLibraryData;
 
-              return yield* _loadLibraryData;
+              return {
+                changedCount: updatedWords.length,
+                wordEntries: libraryData.wordEntries,
+              };
             })
           ),
       }),
@@ -615,6 +666,53 @@ export const makeLibraryMachine = ({
             })
           ),
       }),
+      deleteSelectedWordEntries: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(DeleteWordsInputSchema),
+          output: Schema.toStandardSchemaV1(DeleteWordsResultSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              if (!EffectArray.isReadonlyArrayNonEmpty(input.wordIds)) {
+                return yield* Effect.fail(
+                  new Error("Select at least one word.")
+                );
+              }
+
+              if (
+                input.requiresTypedConfirmation &&
+                input.confirmation.trim() !== DeleteAllWordsConfirmationText
+              ) {
+                return yield* Effect.fail(
+                  new Error("Type the confirmation phrase before deleting.")
+                );
+              }
+
+              const store = yield* IndexedDb.Store.Store;
+              const existingWordEntries = yield* store.listWords();
+              const existingTargetCount = input.wordIds.filter((wordId) =>
+                existingWordEntries.some((word) => word.id === wordId)
+              ).length;
+
+              if (existingTargetCount !== input.wordIds.length) {
+                return yield* Effect.fail(
+                  new Error(
+                    "One or more selected words are no longer in the library."
+                  )
+                );
+              }
+
+              yield* store.deleteWords(input.wordIds);
+              const libraryData = yield* _loadLibraryData;
+
+              return {
+                deletedCount: input.wordIds.length,
+                wordEntries: libraryData.wordEntries,
+              };
+            })
+          ),
+      }),
       exportWordEntries: createAsyncLogic({
         schemas: {
           input: Schema.toStandardSchemaV1(ExportWordsInputSchema),
@@ -624,12 +722,14 @@ export const makeLibraryMachine = ({
           runtime.runPromise(
             Effect.gen(function* () {
               const activeWordEntries = input.wordEntries.filter(
-                (word) => word.archivedAt === undefined
+                (word) =>
+                  input.wordIds.includes(word.id) &&
+                  word.archivedAt === undefined
               );
 
               if (!EffectArray.isReadonlyArrayNonEmpty(activeWordEntries)) {
                 return yield* Effect.fail(
-                  new Error("No active words to export.")
+                  new Error("No active selected words to export.")
                 );
               }
 
@@ -1158,12 +1258,16 @@ export const makeLibraryMachine = ({
     },
   }).createMachine({
     context: {
+      bulkDeleteConfirmation: "",
       deleteAllWordsConfirmation: "",
+      deleteSelectionIncludesAllWords: false,
       editingWordDescription: "",
       editingWordText: "",
       editingWordTranslation: "",
       exampleImportJsonText: "",
       importedWordCount: 0,
+      pendingWordIds: [],
+      selectedWordIds: [],
       wordDescription: "",
       wordEntries: [],
       wordImportJsonText: "",
@@ -1173,34 +1277,113 @@ export const makeLibraryMachine = ({
     },
     initial: "Loading",
     states: {
+      ConfirmingArchiveWords: {
+        on: {
+          cancelArchiveWords: {
+            target: "Ready",
+            context: {
+              archiveAction: undefined,
+              pendingWordIds: [],
+              message: undefined,
+            },
+          },
+          confirmArchiveWords: {
+            target: "ChangingWordArchive",
+          },
+        },
+      },
       ChangingWordArchive: {
         invoke: {
           src: "changeWordArchive",
           input: ({ context }) => ({
             action: context.archiveAction ?? "archive",
-            text: context.changingArchiveWordText ?? "",
+            wordIds: context.pendingWordIds,
           }),
-          onDone: ({ context, event }) => ({
-            target: "Ready",
-            context: {
-              archiveAction: undefined,
-              changingArchiveWordText: undefined,
-              message:
-                context.archiveAction === "restore"
-                  ? "Word restored."
-                  : "Word archived.",
-              wordEntries: event.output.wordEntries,
-            },
-          }),
+          onDone: ({ context, event }) => {
+            const changedCount = event.output.changedCount;
+            const action = context.archiveAction ?? "archive";
+
+            return {
+              target: "Ready",
+              context: {
+                archiveAction: undefined,
+                message:
+                  action === "restore"
+                    ? `${changedCount} ${
+                        changedCount === 1 ? "word" : "words"
+                      } restored.`
+                    : `${changedCount} ${
+                        changedCount === 1 ? "word" : "words"
+                      } archived.`,
+                pendingWordIds: [],
+                selectedWordIds: [],
+                wordEntries: event.output.wordEntries,
+              },
+            };
+          },
           onError: ({ event }) => ({
             target: "Ready",
             context: {
               archiveAction: undefined,
-              changingArchiveWordText: undefined,
+              pendingWordIds: [],
               message:
                 event.error instanceof Error
                   ? event.error.message
                   : "Could not change the word archive.",
+            },
+          }),
+        },
+      },
+      ConfirmingSelectedWordsDeletion: {
+        on: {
+          cancelDeleteSelectedWords: {
+            target: "Ready",
+            context: {
+              bulkDeleteConfirmation: "",
+              deleteSelectionIncludesAllWords: false,
+              pendingWordIds: [],
+              message: undefined,
+            },
+          },
+          changeBulkDeleteConfirmation: ({ event }) => ({
+            context: {
+              bulkDeleteConfirmation: event.confirmation,
+              message: undefined,
+            },
+          }),
+          confirmDeleteSelectedWords: {
+            target: "DeletingSelectedWords",
+          },
+        },
+      },
+      DeletingSelectedWords: {
+        invoke: {
+          src: "deleteSelectedWordEntries",
+          input: ({ context }) => ({
+            confirmation: context.bulkDeleteConfirmation,
+            requiresTypedConfirmation: context.deleteSelectionIncludesAllWords,
+            wordIds: context.pendingWordIds,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              bulkDeleteConfirmation: "",
+              deleteSelectionIncludesAllWords: false,
+              message: `${event.output.deletedCount} ${
+                event.output.deletedCount === 1 ? "word" : "words"
+              } deleted.`,
+              pendingWordIds: [],
+              selectedWordIds: [],
+              wordEntries: event.output.wordEntries,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "ConfirmingSelectedWordsDeletion",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not delete the selected words.",
             },
           }),
         },
@@ -1331,6 +1514,7 @@ export const makeLibraryMachine = ({
           src: "exportWordEntries",
           input: ({ context }) => ({
             wordEntries: context.wordEntries,
+            wordIds: context.selectedWordIds,
           }),
           onDone: ({ event }) => ({
             target: "Ready.Copied",
@@ -1475,17 +1659,40 @@ export const makeLibraryMachine = ({
         },
         on: {
           archiveWord: ({ event }) => ({
-            target: "ChangingWordArchive",
+            target: "ConfirmingArchiveWords",
             context: {
               archiveAction: "archive",
-              changingArchiveWordText: event.text,
               editingWordDescription: "",
               editingWordOriginalText: undefined,
               editingWordText: "",
               editingWordTranslation: "",
               message: undefined,
+              pendingWordIds: [event.wordId],
             },
           }),
+          archiveSelectedWords: ({ context }) => {
+            const activeSelectedWordIds = context.selectedWordIds.filter(
+              (wordId) =>
+                context.wordEntries.some(
+                  (word) => word.id === wordId && word.archivedAt === undefined
+                )
+            );
+
+            return EffectArray.isReadonlyArrayNonEmpty(activeSelectedWordIds)
+              ? {
+                  target: "ConfirmingArchiveWords",
+                  context: {
+                    archiveAction: "archive" as const,
+                    message: undefined,
+                    pendingWordIds: activeSelectedWordIds,
+                  },
+                }
+              : {
+                  context: {
+                    message: "Select at least one active word to archive.",
+                  },
+                };
+          },
           cancelDeleteAllWords: {
             context: {
               deleteAllWordsConfirmation: "",
@@ -1505,6 +1712,12 @@ export const makeLibraryMachine = ({
               editingWordText: "",
               editingWordTranslation: "",
               message: undefined,
+            },
+          },
+          clearWordSelection: {
+            context: {
+              message: undefined,
+              selectedWordIds: [],
             },
           },
           changeDeleteAllWordsConfirmation: ({ event }) => ({
@@ -1571,8 +1784,27 @@ export const makeLibraryMachine = ({
               editingWordText: "",
               editingWordTranslation: "",
               message: undefined,
+              selectedWordIds: [],
             },
           },
+          deleteSelectedWords: ({ context }) =>
+            EffectArray.isReadonlyArrayNonEmpty(context.selectedWordIds)
+              ? {
+                  target: "ConfirmingSelectedWordsDeletion",
+                  context: {
+                    bulkDeleteConfirmation: "",
+                    deleteSelectionIncludesAllWords:
+                      context.selectedWordIds.length ===
+                      context.wordEntries.length,
+                    message: undefined,
+                    pendingWordIds: context.selectedWordIds,
+                  },
+                }
+              : {
+                  context: {
+                    message: "Select at least one word to delete.",
+                  },
+                },
           deleteWord: ({ event }) => ({
             target: "ConfirmingWordDeletion",
             context: {
@@ -1582,6 +1814,7 @@ export const makeLibraryMachine = ({
               editingWordText: "",
               editingWordTranslation: "",
               message: undefined,
+              selectedWordIds: [],
             },
           }),
           editWord: ({ context, event }) => {
@@ -1604,6 +1837,7 @@ export const makeLibraryMachine = ({
                 editingWordText: wordEntry.text,
                 editingWordTranslation: wordEntry.translation,
                 message: undefined,
+                selectedWordIds: [],
               },
             };
           },
@@ -1633,12 +1867,12 @@ export const makeLibraryMachine = ({
             target: "ChangingWordArchive",
             context: {
               archiveAction: "restore",
-              changingArchiveWordText: event.text,
               editingWordDescription: "",
               editingWordOriginalText: undefined,
               editingWordText: "",
               editingWordTranslation: "",
               message: undefined,
+              pendingWordIds: [event.wordId],
             },
           }),
           resetExampleImport: {
@@ -1654,6 +1888,25 @@ export const makeLibraryMachine = ({
             context: {
               message: undefined,
               wordView: event.view,
+            },
+          }),
+          toggleAllWords: ({ context }) => ({
+            context: {
+              message: undefined,
+              selectedWordIds:
+                context.selectedWordIds.length === context.wordEntries.length
+                  ? []
+                  : context.wordEntries.map((word) => word.id),
+            },
+          }),
+          toggleWordSelection: ({ context, event }) => ({
+            context: {
+              message: undefined,
+              selectedWordIds: context.selectedWordIds.includes(event.wordId)
+                ? context.selectedWordIds.filter(
+                    (wordId) => wordId !== event.wordId
+                  )
+                : [...context.selectedWordIds, event.wordId],
             },
           }),
           updateWord: {

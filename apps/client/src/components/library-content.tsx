@@ -1,5 +1,6 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Button } from "@base-ui/react/button";
+import { Checkbox } from "@base-ui/react/checkbox";
 import { Field } from "@base-ui/react/field";
 import { Form } from "@base-ui/react/form";
 import { Tabs } from "@base-ui/react/tabs";
@@ -14,6 +15,7 @@ import {
   Check,
   Copy,
   LoaderCircle,
+  Minus,
   Pencil,
   Save,
   Trash2,
@@ -56,20 +58,62 @@ const dialogPopupClassName =
   "fixed left-1/2 top-1/2 grid w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-md border border-line bg-panel p-5 text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none";
 
 const _entryTabClassName = ({ active }: { readonly active: boolean }) =>
-  `inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-md px-2 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50 sm:px-3 ${
+  `inline-flex h-10 min-w-0 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-sm font-black transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50 sm:gap-2 sm:px-3 ${
     active
       ? "bg-action text-action-ink hover:bg-action-hover"
       : "text-ink-muted hover:bg-field hover:text-ink"
   }`;
 
+function WordSelectionCheckbox({
+  checked,
+  disabled,
+  indeterminate = false,
+  label,
+  onChange,
+}: {
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  readonly indeterminate?: boolean;
+  readonly label: string;
+  readonly onChange: () => void;
+}) {
+  return (
+    <Checkbox.Root
+      aria-label={label}
+      checked={checked}
+      className="inline-flex size-6 shrink-0 items-center justify-center rounded border border-line bg-panel text-action transition hover:border-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50 data-[checked]:border-action data-[checked]:bg-action data-[checked]:text-action-ink data-[indeterminate]:border-action data-[indeterminate]:bg-action data-[indeterminate]:text-action-ink"
+      disabled={disabled}
+      indeterminate={indeterminate}
+      onCheckedChange={onChange}
+    >
+      <Checkbox.Indicator className="inline-flex items-center justify-center">
+        {indeterminate ? (
+          <Minus aria-hidden="true" size={15} strokeWidth={3} />
+        ) : (
+          <Check aria-hidden="true" size={15} strokeWidth={3} />
+        )}
+      </Checkbox.Indicator>
+    </Checkbox.Root>
+  );
+}
+
 export function WordLibraryContent() {
   const [snapshot, , actor] = useMachine(libraryMachine);
+  const archiveAction = snapshot.context.archiveAction;
+  const bulkDeleteConfirmation = snapshot.context.bulkDeleteConfirmation;
+  const deleteSelectionIncludesAllWords =
+    snapshot.context.deleteSelectionIncludesAllWords;
   const confirmingAllWordsDeletion = snapshot.matches(
     "ConfirmingAllWordsDeletion"
+  );
+  const confirmingArchiveWords = snapshot.matches("ConfirmingArchiveWords");
+  const confirmingSelectedWordsDeletion = snapshot.matches(
+    "ConfirmingSelectedWordsDeletion"
   );
   const confirmingWordDeletion = snapshot.matches("ConfirmingWordDeletion");
   const changingWordArchive = snapshot.matches("ChangingWordArchive");
   const deletingAllWords = snapshot.matches("DeletingAllWords");
+  const deletingSelectedWords = snapshot.matches("DeletingSelectedWords");
   const deletingWord = snapshot.matches("DeletingWord");
   const exportingWords = snapshot.matches("ExportingWords");
   const importingExamples = snapshot.matches("ImportingExamples");
@@ -79,10 +123,37 @@ export function WordLibraryContent() {
   const hasWordEntries = EffectArray.isReadonlyArrayNonEmpty(
     snapshot.context.wordEntries
   );
+  const selectedWordCount = snapshot.context.selectedWordIds.length;
+  const allWordsSelected =
+    hasWordEntries && selectedWordCount === snapshot.context.wordEntries.length;
+  const someWordsSelected = selectedWordCount > 0;
+  const activeSelectedWordCount = snapshot.context.selectedWordIds.filter(
+    (wordId) =>
+      snapshot.context.wordEntries.some(
+        (word) => word.id === wordId && word.archivedAt === undefined
+      )
+  ).length;
+  const pendingWordEntries = snapshot.context.pendingWordIds.flatMap(
+    (wordId) => {
+      const word = snapshot.context.wordEntries.find(
+        (entry) => entry.id === wordId
+      );
+
+      return word === undefined ? [] : [word];
+    }
+  );
+  const bulkWordActionActive =
+    confirmingArchiveWords ||
+    confirmingSelectedWordsDeletion ||
+    changingWordArchive ||
+    deletingSelectedWords ||
+    exportingWords;
   const wordDeletionActive =
     confirmingAllWordsDeletion ||
+    confirmingSelectedWordsDeletion ||
     confirmingWordDeletion ||
     deletingAllWords ||
+    deletingSelectedWords ||
     deletingWord;
   const wordExportCopied = snapshot.matches({ Ready: "Copied" });
 
@@ -107,24 +178,27 @@ export function WordLibraryContent() {
           className={_entryTabClassName}
           disabled={wordDeletionActive}
         >
-          <Upload size={16} strokeWidth={2.5} />
-          New words
+          <Upload aria-hidden="true" size={16} strokeWidth={2.5} />
+          <span className="sm:hidden">Import</span>
+          <span className="hidden sm:inline">New words</span>
         </Tabs.Tab>
         <Tabs.Tab
           value="examples"
           className={_entryTabClassName}
           disabled={wordDeletionActive}
         >
-          <BookPlus size={16} strokeWidth={2.5} />
-          Add examples
+          <BookPlus aria-hidden="true" size={16} strokeWidth={2.5} />
+          <span className="sm:hidden">Examples</span>
+          <span className="hidden sm:inline">Add examples</span>
         </Tabs.Tab>
         <Tabs.Tab
           value="single"
           className={_entryTabClassName}
           disabled={wordDeletionActive}
         >
-          <Save size={16} strokeWidth={2.5} />
-          Single word
+          <Save aria-hidden="true" size={16} strokeWidth={2.5} />
+          <span className="sm:hidden">Single</span>
+          <span className="hidden sm:inline">Single word</span>
         </Tabs.Tab>
       </Tabs.List>
       {snapshot.context.message === undefined ? null : (
@@ -304,123 +378,165 @@ export function WordLibraryContent() {
         </Tabs.Panel>
         <div className="pt-6">
           {hasWordEntries ? (
-            <div className="mb-4 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-              <AlertDialog.Root
-                open={confirmingAllWordsDeletion || deletingAllWords}
-                onOpenChange={(open) => {
-                  if (open) {
-                    actor.trigger.deleteAllWords();
-                    return;
-                  }
-
-                  if (!deletingAllWords) {
-                    actor.trigger.cancelDeleteAllWords();
-                  }
-                }}
+            <div className="mb-4 flex min-w-0 flex-col gap-3 rounded-md border border-line bg-panel px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto">
+                <div className="flex min-w-0 items-center gap-3">
+                  <WordSelectionCheckbox
+                    checked={allWordsSelected}
+                    disabled={
+                      bulkWordActionActive || wordDeletionActive || updatingWord
+                    }
+                    indeterminate={someWordsSelected && !allWordsSelected}
+                    label={
+                      allWordsSelected ? "Clear all words" : "Select all words"
+                    }
+                    onChange={() => {
+                      actor.trigger.toggleAllWords();
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    aria-label={
+                      allWordsSelected ? "Clear all words" : "Select all words"
+                    }
+                    className="min-w-0 text-left text-sm font-black text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
+                    disabled={
+                      bulkWordActionActive || wordDeletionActive || updatingWord
+                    }
+                    focusableWhenDisabled
+                    onClick={() => {
+                      actor.trigger.toggleAllWords();
+                    }}
+                  >
+                    {someWordsSelected
+                      ? `${selectedWordCount} selected`
+                      : "Select all words"}
+                  </Button>
+                </div>
+                {someWordsSelected ? (
+                  <Button
+                    type="button"
+                    className={`${quietButtonClassName} w-20 sm:hidden`}
+                    disabled={bulkWordActionActive}
+                    focusableWhenDisabled
+                    onClick={() => {
+                      actor.trigger.clearWordSelection();
+                    }}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
+              </div>
+              <div
+                aria-hidden={!someWordsSelected}
+                className={`min-h-10 min-w-0 flex-wrap items-center gap-2 ${
+                  someWordsSelected ? "flex" : "hidden sm:flex sm:invisible"
+                }`}
               >
-                <AlertDialog.Trigger
-                  className={secondaryButtonClassName}
-                  disabled={
-                    changingWordArchive ||
-                    confirmingWordDeletion ||
-                    deletingAllWords ||
-                    deletingWord ||
-                    exportingWords ||
-                    importingExamples ||
-                    importingWords ||
-                    savingWord ||
-                    updatingWord
-                  }
-                >
-                  <Trash2 size={16} strokeWidth={2.5} />
-                  {deletingAllWords ? "Deleting" : "Delete all"}
-                </AlertDialog.Trigger>
-                <AlertDialog.Portal>
-                  <AlertDialog.Backdrop className={dialogBackdropClassName} />
-                  <AlertDialog.Popup className={dialogPopupClassName}>
-                    <div className="grid gap-2">
-                      <AlertDialog.Title className="text-lg font-black">
-                        Delete all words?
-                      </AlertDialog.Title>
-                      <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
-                        Type the confirmation phrase to remove every word entry.
-                      </AlertDialog.Description>
-                    </div>
-                    <Field.Root
-                      className="grid gap-2"
-                      disabled={deletingAllWords}
-                    >
-                      <Field.Label className="text-sm font-black">
-                        Confirmation
-                      </Field.Label>
-                      <Field.Control
-                        className={`${fieldControlClassName} text-sm font-bold placeholder:text-ink-muted/70`}
-                        aria-label="Delete all words confirmation"
-                        disabled={deletingAllWords}
-                        placeholder={
-                          LibraryMachine.DeleteAllWordsConfirmationText
-                        }
-                        value={snapshot.context.deleteAllWordsConfirmation}
-                        onValueChange={(confirmation) => {
-                          actor.trigger.changeDeleteAllWordsConfirmation({
-                            confirmation,
-                          });
-                        }}
-                      />
-                    </Field.Root>
-                    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                      <AlertDialog.Close
-                        className={quietButtonClassName}
-                        disabled={deletingAllWords}
-                      >
-                        Cancel
-                      </AlertDialog.Close>
+                <Tooltip.Root>
+                  <Tooltip.Trigger
+                    render={
                       <Button
                         type="button"
-                        className={`${primaryButtonClassName} bg-accent-soft text-accent hover:bg-accent-soft`}
-                        disabled={deletingAllWords}
+                        aria-label={`Archive ${activeSelectedWordCount} selected active ${
+                          activeSelectedWordCount === 1 ? "word" : "words"
+                        }`}
+                        className={`${secondaryButtonClassName} w-[4.5rem] tabular-nums`}
+                        disabled={
+                          activeSelectedWordCount === 0 || bulkWordActionActive
+                        }
                         focusableWhenDisabled
                         onClick={() => {
-                          actor.trigger.deleteAllWords();
+                          actor.trigger.archiveSelectedWords();
                         }}
-                      >
-                        <Trash2 size={16} strokeWidth={2.5} />
-                        {deletingAllWords ? "Deleting" : "Delete all"}
-                      </Button>
-                    </div>
-                  </AlertDialog.Popup>
-                </AlertDialog.Portal>
-              </AlertDialog.Root>
-              <Button
-                type="button"
-                className={secondaryButtonClassName}
-                disabled={
-                  changingWordArchive ||
-                  confirmingWordDeletion ||
-                  deletingAllWords ||
-                  deletingWord ||
-                  exportingWords ||
-                  importingExamples ||
-                  importingWords ||
-                  savingWord ||
-                  updatingWord
-                }
-                focusableWhenDisabled
-                onClick={() => {
-                  actor.trigger.exportWords();
-                }}
-              >
-                {wordExportCopied ? (
-                  <Check size={16} strokeWidth={2.5} />
-                ) : (
-                  <Copy size={16} strokeWidth={2.5} />
-                )}
-                {exportingWords
-                  ? "Exporting"
-                  : wordExportCopied
-                    ? "Copied"
-                    : "Export word list"}
-              </Button>
+                      />
+                    }
+                  >
+                    <Archive size={16} strokeWidth={2.5} />
+                    {activeSelectedWordCount}
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Positioner sideOffset={8}>
+                      <Tooltip.Popup className={tooltipPopupClassName}>
+                        Archive selected words
+                      </Tooltip.Popup>
+                    </Tooltip.Positioner>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+                <Tooltip.Root>
+                  <Tooltip.Trigger
+                    render={
+                      <Button
+                        type="button"
+                        aria-label={`Export ${activeSelectedWordCount} selected active ${
+                          activeSelectedWordCount === 1 ? "word" : "words"
+                        }`}
+                        className={`${secondaryButtonClassName} w-[4.5rem] tabular-nums`}
+                        disabled={
+                          activeSelectedWordCount === 0 || bulkWordActionActive
+                        }
+                        focusableWhenDisabled
+                        onClick={() => {
+                          actor.trigger.exportWords();
+                        }}
+                      />
+                    }
+                  >
+                    {wordExportCopied ? (
+                      <Check size={16} strokeWidth={2.5} />
+                    ) : (
+                      <Copy size={16} strokeWidth={2.5} />
+                    )}
+                    {activeSelectedWordCount}
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Positioner sideOffset={8}>
+                      <Tooltip.Popup className={tooltipPopupClassName}>
+                        Export selected words
+                      </Tooltip.Popup>
+                    </Tooltip.Positioner>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+                <Tooltip.Root>
+                  <Tooltip.Trigger
+                    render={
+                      <Button
+                        type="button"
+                        aria-label={`Delete ${selectedWordCount} selected ${
+                          selectedWordCount === 1 ? "word" : "words"
+                        }`}
+                        className={`${secondaryButtonClassName} w-[4.5rem] tabular-nums text-accent`}
+                        disabled={!someWordsSelected || bulkWordActionActive}
+                        focusableWhenDisabled
+                        onClick={() => {
+                          actor.trigger.deleteSelectedWords();
+                        }}
+                      />
+                    }
+                  >
+                    <Trash2 size={16} strokeWidth={2.5} />
+                    {selectedWordCount}
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Positioner sideOffset={8}>
+                      <Tooltip.Popup className={tooltipPopupClassName}>
+                        Delete selected words
+                      </Tooltip.Popup>
+                    </Tooltip.Positioner>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+                <Button
+                  type="button"
+                  className={`${quietButtonClassName} hidden w-20 items-center justify-center sm:inline-flex`}
+                  disabled={!someWordsSelected || bulkWordActionActive}
+                  focusableWhenDisabled
+                  onClick={() => {
+                    actor.trigger.clearWordSelection();
+                  }}
+                >
+                  Clear
+                </Button>
+              </div>
             </div>
           ) : null}
           {!hasWordEntries ? (
@@ -433,7 +549,10 @@ export function WordLibraryContent() {
                 const archived = entry.archivedAt !== undefined;
                 const changingThisWordArchive =
                   changingWordArchive &&
-                  snapshot.context.changingArchiveWordText === entry.text;
+                  snapshot.context.pendingWordIds.includes(entry.id);
+                const selected = snapshot.context.selectedWordIds.includes(
+                  entry.id
+                );
                 const confirmingDeletionForWord =
                   confirmingWordDeletion &&
                   snapshot.context.deletingWordText === entry.text;
@@ -442,19 +561,34 @@ export function WordLibraryContent() {
                   snapshot.context.deletingWordText === entry.text;
                 const editingWord =
                   snapshot.context.editingWordOriginalText === entry.text;
+                const wordSelectionDisabled =
+                  bulkWordActionActive ||
+                  wordDeletionActive ||
+                  updatingWord ||
+                  editingWord;
 
                 return (
                   <article
                     key={entry.text}
-                    className={`grid gap-3 py-4 ${
-                      archived ? "opacity-55" : ""
-                    }`}
+                    className="relative grid gap-3 py-4"
                   >
+                    <div className="absolute left-1 top-5">
+                      <WordSelectionCheckbox
+                        checked={selected}
+                        disabled={wordSelectionDisabled}
+                        label={`${selected ? "Deselect" : "Select"} ${entry.text}`}
+                        onChange={() => {
+                          actor.trigger.toggleWordSelection({
+                            wordId: entry.id,
+                          });
+                        }}
+                      />
+                    </div>
                     <div
                       className={
                         editingWord
-                          ? "flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
-                          : "flex min-w-0 items-start justify-between gap-4"
+                          ? "flex min-w-0 flex-col gap-3 pl-11 sm:flex-row sm:items-start sm:justify-between sm:gap-4"
+                          : "flex min-w-0 items-start justify-between gap-4 pl-11"
                       }
                     >
                       {editingWord ? (
@@ -516,10 +650,23 @@ export function WordLibraryContent() {
                           </Field.Root>
                         </div>
                       ) : (
-                        <div className="min-w-0">
-                          <div className="text-xl font-black">
+                        <div
+                          className={`min-w-0 ${archived ? "opacity-55" : ""}`}
+                        >
+                          <Button
+                            type="button"
+                            aria-label={`${selected ? "Deselect" : "Select"} ${entry.text}`}
+                            className="block max-w-full text-left text-xl font-black transition hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-50"
+                            disabled={wordSelectionDisabled}
+                            focusableWhenDisabled
+                            onClick={() => {
+                              actor.trigger.toggleWordSelection({
+                                wordId: entry.id,
+                              });
+                            }}
+                          >
                             <WordText text={entry.text} />
-                          </div>
+                          </Button>
                           <div className="text-sm font-black text-accent">
                             {entry.translation}
                           </div>
@@ -551,9 +698,9 @@ export function WordLibraryContent() {
                           )}
                         </div>
                       )}
-                      <div className="flex shrink-0 items-center sm:self-stretch">
+                      <div className="flex shrink-0 items-start sm:items-center sm:self-stretch">
                         {editingWord ? (
-                          <div className="flex w-full justify-end gap-1 sm:w-auto">
+                          <div className="flex w-full flex-col items-end gap-1 sm:w-auto sm:flex-row">
                             <Tooltip.Root>
                               <Tooltip.Trigger
                                 render={
@@ -610,7 +757,7 @@ export function WordLibraryContent() {
                             </Tooltip.Root>
                           </div>
                         ) : (
-                          <div className="flex gap-1">
+                          <div className="flex flex-col gap-1 sm:flex-row">
                             <Tooltip.Root>
                               <Tooltip.Trigger
                                 render={
@@ -662,13 +809,13 @@ export function WordLibraryContent() {
                                     onClick={() => {
                                       if (archived) {
                                         actor.trigger.restoreWord({
-                                          text: entry.text,
+                                          wordId: entry.id,
                                         });
                                         return;
                                       }
 
                                       actor.trigger.archiveWord({
-                                        text: entry.text,
+                                        wordId: entry.id,
                                       });
                                     }}
                                   />
@@ -803,6 +950,191 @@ export function WordLibraryContent() {
               })}
             </div>
           )}
+          <AlertDialog.Root
+            open={
+              confirmingArchiveWords ||
+              (changingWordArchive && archiveAction === "archive")
+            }
+            onOpenChange={(open) => {
+              if (!open && confirmingArchiveWords) {
+                actor.trigger.cancelArchiveWords();
+              }
+            }}
+          >
+            <AlertDialog.Portal>
+              <AlertDialog.Backdrop className={dialogBackdropClassName} />
+              <AlertDialog.Popup className={dialogPopupClassName}>
+                <div className="grid gap-2">
+                  <AlertDialog.Title className="text-lg font-black">
+                    Archive {pendingWordEntries.length}{" "}
+                    {pendingWordEntries.length === 1 ? "word" : "words"}?
+                  </AlertDialog.Title>
+                  <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
+                    These words will leave practice, scheduling, statistics,
+                    history, and exports. Their data will remain available if
+                    restored.
+                  </AlertDialog.Description>
+                </div>
+                <div className="grid max-h-52 gap-2 overflow-y-auto rounded-md border border-line bg-field px-3 py-3">
+                  {pendingWordEntries.slice(0, 5).map((word) => (
+                    <div
+                      key={word.id}
+                      className="flex min-w-0 items-baseline justify-between gap-3"
+                    >
+                      <div className="min-w-0 truncate text-base font-black">
+                        <WordText text={word.text} />
+                      </div>
+                      <div className="min-w-0 truncate text-xs font-black text-accent">
+                        {word.translation}
+                      </div>
+                    </div>
+                  ))}
+                  {pendingWordEntries.length > 5 ? (
+                    <div className="text-xs font-black text-ink-muted">
+                      And {pendingWordEntries.length - 5} more
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    className={quietButtonClassName}
+                    disabled={changingWordArchive}
+                    onClick={() => {
+                      actor.trigger.cancelArchiveWords();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    className={primaryButtonClassName}
+                    disabled={changingWordArchive}
+                    focusableWhenDisabled
+                    onClick={() => {
+                      actor.trigger.confirmArchiveWords();
+                    }}
+                  >
+                    {changingWordArchive ? (
+                      <LoaderCircle
+                        className="animate-spin"
+                        size={16}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Archive size={16} strokeWidth={2.5} />
+                    )}
+                    {changingWordArchive ? "Archiving" : "Archive"}
+                  </Button>
+                </div>
+              </AlertDialog.Popup>
+            </AlertDialog.Portal>
+          </AlertDialog.Root>
+          <AlertDialog.Root
+            open={confirmingSelectedWordsDeletion || deletingSelectedWords}
+            onOpenChange={(open) => {
+              if (!open && confirmingSelectedWordsDeletion) {
+                actor.trigger.cancelDeleteSelectedWords();
+              }
+            }}
+          >
+            <AlertDialog.Portal>
+              <AlertDialog.Backdrop className={dialogBackdropClassName} />
+              <AlertDialog.Popup className={dialogPopupClassName}>
+                <div className="grid gap-2">
+                  <AlertDialog.Title className="text-lg font-black">
+                    Permanently delete {pendingWordEntries.length}{" "}
+                    {pendingWordEntries.length === 1 ? "word" : "words"}?
+                  </AlertDialog.Title>
+                  <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
+                    Their memory states and complete practice histories will
+                    also be removed. This cannot be undone.
+                  </AlertDialog.Description>
+                </div>
+                <div className="grid max-h-52 gap-2 overflow-y-auto rounded-md border border-line bg-field px-3 py-3">
+                  {pendingWordEntries.slice(0, 5).map((word) => (
+                    <div
+                      key={word.id}
+                      className="flex min-w-0 items-baseline justify-between gap-3"
+                    >
+                      <div className="min-w-0 truncate text-base font-black">
+                        <WordText text={word.text} />
+                      </div>
+                      <div className="min-w-0 truncate text-xs font-black text-accent">
+                        {word.translation}
+                      </div>
+                    </div>
+                  ))}
+                  {pendingWordEntries.length > 5 ? (
+                    <div className="text-xs font-black text-ink-muted">
+                      And {pendingWordEntries.length - 5} more
+                    </div>
+                  ) : null}
+                </div>
+                {deleteSelectionIncludesAllWords ? (
+                  <Field.Root
+                    className="grid gap-2"
+                    disabled={deletingSelectedWords}
+                  >
+                    <Field.Label className="text-sm font-black">
+                      Type the confirmation phrase
+                    </Field.Label>
+                    <Field.Control
+                      className={`${fieldControlClassName} text-sm font-bold placeholder:text-ink-muted/70`}
+                      aria-label="Delete selected words confirmation"
+                      disabled={deletingSelectedWords}
+                      placeholder={
+                        LibraryMachine.DeleteAllWordsConfirmationText
+                      }
+                      value={bulkDeleteConfirmation}
+                      onValueChange={(confirmation) => {
+                        actor.trigger.changeBulkDeleteConfirmation({
+                          confirmation,
+                        });
+                      }}
+                    />
+                  </Field.Root>
+                ) : null}
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <Button
+                    type="button"
+                    className={quietButtonClassName}
+                    disabled={deletingSelectedWords}
+                    onClick={() => {
+                      actor.trigger.cancelDeleteSelectedWords();
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    className={`${primaryButtonClassName} bg-accent-soft text-accent hover:bg-accent-soft`}
+                    disabled={
+                      deletingSelectedWords ||
+                      (deleteSelectionIncludesAllWords &&
+                        bulkDeleteConfirmation.trim() !==
+                          LibraryMachine.DeleteAllWordsConfirmationText)
+                    }
+                    focusableWhenDisabled
+                    onClick={() => {
+                      actor.trigger.confirmDeleteSelectedWords();
+                    }}
+                  >
+                    {deletingSelectedWords ? (
+                      <LoaderCircle
+                        className="animate-spin"
+                        size={16}
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Trash2 size={16} strokeWidth={2.5} />
+                    )}
+                    {deletingSelectedWords ? "Deleting" : "Delete"}
+                  </Button>
+                </div>
+              </AlertDialog.Popup>
+            </AlertDialog.Portal>
+          </AlertDialog.Root>
         </div>
       </section>
     </Tabs.Root>

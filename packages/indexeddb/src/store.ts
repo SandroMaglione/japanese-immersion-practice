@@ -77,6 +77,23 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         yield* db.from("words").upsert(word);
       }),
 
+      updateWords: Effect.fn("Store.updateWords")(function* (
+        words: readonly Domain.Word[]
+      ) {
+        if (!EffectArray.isReadonlyArrayNonEmpty(words)) {
+          return;
+        }
+
+        yield* db.withTransaction({
+          tables: ["words"],
+          mode: "readwrite",
+        })(
+          Effect.forEach(words, (word) => db.from("words").upsert(word), {
+            discard: true,
+          })
+        );
+      }),
+
       deleteWord: Effect.fn("Store.deleteWord")(function* (
         wordId: Domain.Word["id"]
       ) {
@@ -89,6 +106,33 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
             db.from("word_memory_states").delete().equals(wordId),
             db.from("word_practice_events").delete("byWordId").equals(wordId),
           ])
+        );
+      }),
+
+      deleteWords: Effect.fn("Store.deleteWords")(function* (
+        wordIds: readonly Domain.WordId[]
+      ) {
+        if (!EffectArray.isReadonlyArrayNonEmpty(wordIds)) {
+          return;
+        }
+
+        yield* db.withTransaction({
+          tables: ["words", "word_memory_states", "word_practice_events"],
+          mode: "readwrite",
+        })(
+          Effect.forEach(
+            wordIds,
+            (wordId) =>
+              Effect.all([
+                db.from("words").delete().equals(wordId),
+                db.from("word_memory_states").delete().equals(wordId),
+                db
+                  .from("word_practice_events")
+                  .delete("byWordId")
+                  .equals(wordId),
+              ]),
+            { discard: true }
+          )
         );
       }),
 
