@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manage Japanese Vocabulary"
+  short_description: "Research and add words or examples to D1"
+  default_prompt: "Use $manage-japanese-vocabulary to add one or more Japanese words or examples to the production library."
