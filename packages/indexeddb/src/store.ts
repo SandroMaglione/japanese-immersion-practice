@@ -1,19 +1,15 @@
-import {
-  Array as EffectArray,
-  Context,
-  DateTime,
-  Effect,
-  HashSet,
-  Layer,
-} from "effect";
+import { Array as EffectArray, DateTime, Effect, HashSet, Layer } from "effect";
+
+import * as DataStore from "@jip/data/store";
 
 import * as Database from "./database.ts";
 import * as Domain from "./domain.ts";
 
-export type StoreService = Context.Service.Shape<typeof Store>;
+export type StoreService = DataStore.StoreService;
 
-export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
-  make: Effect.gen(function* () {
+export const Default = Layer.effect(
+  DataStore.Store,
+  Effect.gen(function* () {
     const db = yield* Database.JapanesePracticeDatabase.getQueryBuilder;
 
     return {
@@ -344,7 +340,7 @@ export class Store extends Context.Service<Store>()("@jip/indexeddb/Store", {
         }
       ),
     };
-  }),
-}) {
-  static readonly Default = Layer.effect(this)(this.make);
-}
+  })
+);
+
+export const Store = Object.assign(DataStore.Store, { Default });

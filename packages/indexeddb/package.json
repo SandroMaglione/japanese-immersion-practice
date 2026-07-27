@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@effect/platform-browser": "4.0.0-beta.92",
+    "@jip/data": "workspace:^",
     "@jip/services": "workspace:^",
     "effect": "4.0.0-beta.92"
   }

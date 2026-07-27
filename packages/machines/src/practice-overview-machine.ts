@@ -1,4 +1,4 @@
-import { IndexedDb } from "@jip/indexeddb";
+import { Domain, Store } from "@jip/data";
 import {
   FuriganaText,
   WordMemoryScheduler,
@@ -24,11 +24,11 @@ const SessionSelectionStateSchema = Schema.Struct({
 });
 
 const PracticeItemSchema = Schema.Struct({
-  example: Schema.optionalKey(IndexedDb.Domain.WordPracticeExample),
-  kind: IndexedDb.Domain.WordPracticeKind,
-  source: IndexedDb.Domain.WordPracticeSource,
-  state: IndexedDb.Domain.WordMemoryState,
-  word: IndexedDb.Domain.Word,
+  example: Schema.optionalKey(Domain.WordPracticeExample),
+  kind: Domain.WordPracticeKind,
+  source: Domain.WordPracticeSource,
+  state: Domain.WordMemoryState,
+  word: Domain.Word,
 });
 
 const PracticeSessionStatsSchema = Schema.Struct({
@@ -42,22 +42,22 @@ const PracticeSessionStatsSchema = Schema.Struct({
 const PracticeResultSchema = Schema.Struct({
   changedSchedule: Schema.Boolean,
   difficulty: Schema.Number,
-  example: Schema.optionalKey(IndexedDb.Domain.WordPracticeExample),
+  example: Schema.optionalKey(Domain.WordPracticeExample),
   isCorrect: Schema.Boolean,
-  kind: IndexedDb.Domain.WordPracticeKind,
+  kind: Domain.WordPracticeKind,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
-  phaseAfter: IndexedDb.Domain.WordMemoryPhase,
-  phaseBefore: IndexedDb.Domain.WordMemoryPhase,
-  source: IndexedDb.Domain.WordPracticeSource,
+  phaseAfter: Domain.WordMemoryPhase,
+  phaseBefore: Domain.WordMemoryPhase,
+  source: Domain.WordPracticeSource,
   stability: Schema.Number,
-  word: IndexedDb.Domain.Word,
+  word: Domain.Word,
 });
 
 const PracticeSessionDataSchema = Schema.Struct({
   dueReviewCount: Schema.Number,
   item: Schema.optionalKey(PracticeItemSchema),
   selectionState: SessionSelectionStateSchema,
-  sessionId: IndexedDb.Domain.WordPracticeSessionId,
+  sessionId: Domain.WordPracticeSessionId,
 });
 
 const PracticeSubmitResultSchema = Schema.Struct({
@@ -78,7 +78,7 @@ const PracticeOverviewContextSchema = Schema.Struct({
   message: Schema.optionalKey(Schema.String),
   nextItem: Schema.optionalKey(PracticeItemSchema),
   selectionState: SessionSelectionStateSchema,
-  sessionId: Schema.optionalKey(IndexedDb.Domain.WordPracticeSessionId),
+  sessionId: Schema.optionalKey(Domain.WordPracticeSessionId),
   stats: PracticeSessionStatsSchema,
 });
 
@@ -87,11 +87,11 @@ const SubmitPracticeInputSchema = Schema.Struct({
   dueReviewCount: Schema.Number,
   response: Schema.String,
   selectionState: SessionSelectionStateSchema,
-  sessionId: Schema.optionalKey(IndexedDb.Domain.WordPracticeSessionId),
+  sessionId: Schema.optionalKey(Domain.WordPracticeSessionId),
   stats: PracticeSessionStatsSchema,
 });
 
-type MemoryState = typeof IndexedDb.Domain.WordMemoryState.Type;
+type MemoryState = typeof Domain.WordMemoryState.Type;
 type SessionSelectionState = typeof SessionSelectionStateSchema.Type;
 
 const InitialSelectionState = {
@@ -196,7 +196,7 @@ const _loadNextPracticeItem = ({
   readonly selectionState: SessionSelectionState;
 }) =>
   Effect.gen(function* () {
-    const store = yield* IndexedDb.Store.Store;
+    const store = yield* Store.Store;
     const storedPools = yield* store.loadWordSelectionPool({
       limit: 64,
       now,
@@ -283,7 +283,7 @@ const _loadNextPracticeItem = ({
 export const makePracticeOverviewMachine = ({
   runtime,
 }: {
-  readonly runtime: MachineRuntime<IndexedDb.Store.Store>;
+  readonly runtime: MachineRuntime<Store.Store>;
 }) =>
   setup({
     schemas: {
@@ -311,7 +311,7 @@ export const makePracticeOverviewMachine = ({
                 selectionState: InitialSelectionState,
               });
               const sessionId = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordPracticeSessionId
+                Domain.WordPracticeSessionId
               )(crypto.randomUUID());
 
               return {
@@ -329,7 +329,7 @@ export const makePracticeOverviewMachine = ({
         run: ({ input }) =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const currentItem = input.currentItem;
               const sessionId = input.sessionId;
 
@@ -366,7 +366,7 @@ export const makePracticeOverviewMachine = ({
                 result,
               });
               const nextState = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordMemoryState
+                Domain.WordMemoryState
               )({
                 wordId: currentItem.state.wordId,
                 phase: transition.card.phase,
@@ -394,7 +394,7 @@ export const makePracticeOverviewMachine = ({
                 updatedAt: reviewedAt,
               });
               const event = yield* Schema.decodeEffect(
-                IndexedDb.Domain.WordPracticeEvent
+                Domain.WordPracticeEvent
               )({
                 id: crypto.randomUUID(),
                 wordId: currentItem.word.id,

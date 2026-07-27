@@ -1,4 +1,4 @@
-import { IndexedDb } from "@jip/indexeddb";
+import { Domain, Store } from "@jip/data";
 import {
   FuriganaText,
   WordMemoryScheduler,
@@ -20,7 +20,7 @@ import { createAsyncLogic, setup } from "xstate";
 import type { MachineRuntime } from "./runtime.ts";
 
 const LibraryDataSchema = Schema.Struct({
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
 });
 
 const WordLibraryViewSchema = Schema.Literals(["batch", "examples", "single"]);
@@ -41,10 +41,10 @@ const LibraryContextSchema = Schema.Struct({
   exampleImportJsonText: Schema.String,
   importedWordCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
-  pendingWordIds: Schema.Array(IndexedDb.Domain.WordId),
-  selectedWordIds: Schema.Array(IndexedDb.Domain.WordId),
+  pendingWordIds: Schema.Array(Domain.WordId),
+  selectedWordIds: Schema.Array(Domain.WordId),
   wordDescription: Schema.String,
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
   wordImportJsonText: Schema.String,
   wordText: Schema.String,
   wordTranslation: Schema.String,
@@ -74,23 +74,23 @@ const DeleteAllWordsInputSchema = Schema.Struct({
 
 const ChangeWordArchiveInputSchema = Schema.Struct({
   action: WordArchiveActionSchema,
-  wordIds: Schema.Array(IndexedDb.Domain.WordId),
+  wordIds: Schema.Array(Domain.WordId),
 });
 
 const ChangeWordArchiveResultSchema = Schema.Struct({
   changedCount: Schema.Number,
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
 });
 
 const DeleteWordsInputSchema = Schema.Struct({
   confirmation: Schema.String,
   requiresTypedConfirmation: Schema.Boolean,
-  wordIds: Schema.Array(IndexedDb.Domain.WordId),
+  wordIds: Schema.Array(Domain.WordId),
 });
 
 const DeleteWordsResultSchema = Schema.Struct({
   deletedCount: Schema.Number,
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
 });
 
 const ImportWordsInputSchema = Schema.Struct({
@@ -101,7 +101,7 @@ const ImportWordsResultSchema = Schema.Struct({
   importedCount: Schema.Number,
   skippedCount: Schema.Number,
   skippedReasons: Schema.Array(Schema.String),
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
 });
 
 const ImportExamplesResultSchema = Schema.Struct({
@@ -110,12 +110,12 @@ const ImportExamplesResultSchema = Schema.Struct({
   skippedReasons: Schema.Array(Schema.String),
   unchangedCount: Schema.Number,
   updatedCount: Schema.Number,
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
+  wordEntries: Schema.Array(Domain.Word),
 });
 
 const ExportWordsInputSchema = Schema.Struct({
-  wordEntries: Schema.Array(IndexedDb.Domain.Word),
-  wordIds: Schema.Array(IndexedDb.Domain.WordId),
+  wordEntries: Schema.Array(Domain.Word),
+  wordIds: Schema.Array(Domain.WordId),
 });
 
 const ExportWordsResultSchema = Schema.Struct({
@@ -350,7 +350,7 @@ export const WordExampleImportJsonExample = Formatter.formatJson(
 );
 
 const _loadLibraryData = Effect.gen(function* () {
-  const store = yield* IndexedDb.Store.Store;
+  const store = yield* Store.Store;
   const storedWordEntries = yield* store.listWords();
   const wordEntries = [...storedWordEntries].sort((left, right) => {
     if ((left.archivedAt === undefined) === (right.archivedAt === undefined)) {
@@ -410,14 +410,14 @@ const _makeWordAndState = ({
   translation,
 }: {
   readonly description?: string;
-  readonly examples?: readonly IndexedDb.Domain.WordPracticeExample[];
+  readonly examples?: readonly Domain.WordPracticeExample[];
   readonly now: number;
   readonly text: string;
   readonly translation: string;
 }) =>
   Effect.gen(function* () {
     const id = crypto.randomUUID();
-    const word = yield* Schema.decodeEffect(IndexedDb.Domain.Word)({
+    const word = yield* Schema.decodeEffect(Domain.Word)({
       id,
       createdAt: now,
       ...(description === undefined ? {} : { description }),
@@ -427,7 +427,7 @@ const _makeWordAndState = ({
       updatedAt: now,
     });
     const card = WordMemoryScheduler.initialCard({ now });
-    const state = yield* Schema.decodeEffect(IndexedDb.Domain.WordMemoryState)({
+    const state = yield* Schema.decodeEffect(Domain.WordMemoryState)({
       wordId: id,
       phase: card.phase,
       dueAt: card.dueAtMillis,
@@ -456,14 +456,14 @@ const _makeWordAndState = ({
 export const makeLibraryMachine = ({
   runtime,
 }: {
-  readonly runtime: MachineRuntime<IndexedDb.Store.Store>;
+  readonly runtime: MachineRuntime<Store.Store>;
 }) =>
   setup({
     schemas: {
       context: Schema.toStandardSchemaV1(LibraryContextSchema),
       events: {
         archiveWord: Schema.toStandardSchemaV1(
-          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
+          Schema.Struct({ wordId: Domain.WordId })
         ),
         archiveSelectedWords: Schema.toStandardSchemaV1(Schema.Void),
         cancelArchiveWords: Schema.toStandardSchemaV1(Schema.Void),
@@ -519,7 +519,7 @@ export const makeLibraryMachine = ({
         resetExampleImport: Schema.toStandardSchemaV1(Schema.Void),
         resetWordImport: Schema.toStandardSchemaV1(Schema.Void),
         restoreWord: Schema.toStandardSchemaV1(
-          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
+          Schema.Struct({ wordId: Domain.WordId })
         ),
         saveWord: Schema.toStandardSchemaV1(Schema.Void),
         selectWordView: Schema.toStandardSchemaV1(
@@ -527,7 +527,7 @@ export const makeLibraryMachine = ({
         ),
         toggleAllWords: Schema.toStandardSchemaV1(Schema.Void),
         toggleWordSelection: Schema.toStandardSchemaV1(
-          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
+          Schema.Struct({ wordId: Domain.WordId })
         ),
         updateWord: Schema.toStandardSchemaV1(Schema.Void),
       },
@@ -547,7 +547,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
               const targetedWordEntries = input.wordIds.flatMap((wordId) => {
                 const word = existingWordEntries.find(
@@ -573,7 +573,7 @@ export const makeLibraryMachine = ({
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               const updatedWords = yield* Effect.all(
                 changedWordEntries.map((existingWordEntry) =>
-                  Schema.decodeEffect(IndexedDb.Domain.Word)({
+                  Schema.decodeEffect(Domain.Word)({
                     id: existingWordEntry.id,
                     ...(input.action === "archive" ? { archivedAt: now } : {}),
                     createdAt: DateTime.toEpochMillis(
@@ -618,7 +618,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               yield* store.deleteAllWords();
 
               return yield* _loadLibraryData;
@@ -641,7 +641,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
 
               if (!existingWordEntries.some((entry) => entry.text === text)) {
@@ -689,7 +689,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
               const existingTargetCount = input.wordIds.filter((wordId) =>
                 existingWordEntries.some((word) => word.id === wordId)
@@ -779,7 +779,7 @@ export const makeLibraryMachine = ({
 
               const skippedReasons: string[] = [];
               const parsedWords: {
-                readonly examples: readonly IndexedDb.Domain.WordPracticeExample[];
+                readonly examples: readonly Domain.WordPracticeExample[];
                 readonly normalizedText: string;
                 readonly text: string;
               }[] = [];
@@ -854,7 +854,7 @@ export const makeLibraryMachine = ({
                 });
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
               const now = DateTime.toEpochMillis(yield* DateTime.now);
               let addedExampleCount = 0;
@@ -904,9 +904,7 @@ export const makeLibraryMachine = ({
                   continue;
                 }
 
-                const wordEntry = yield* Schema.decodeEffect(
-                  IndexedDb.Domain.Word
-                )({
+                const wordEntry = yield* Schema.decodeEffect(Domain.Word)({
                   id: existingWordEntry.id,
                   createdAt: DateTime.toEpochMillis(
                     existingWordEntry.createdAt
@@ -965,7 +963,7 @@ export const makeLibraryMachine = ({
               const skippedReasons: string[] = [];
               const parsedWords: {
                 readonly description?: string;
-                readonly examples?: readonly IndexedDb.Domain.WordPracticeExample[];
+                readonly examples?: readonly Domain.WordPracticeExample[];
                 readonly normalizedText: string;
                 readonly text: string;
                 readonly translation: string;
@@ -1067,7 +1065,7 @@ export const makeLibraryMachine = ({
                 unrepeatedWords.push(parsedWord);
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
               const newWords: typeof parsedWords = [];
 
@@ -1145,7 +1143,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
 
               if (
@@ -1202,7 +1200,7 @@ export const makeLibraryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const existingWordEntries = yield* store.listWords();
               const existingWordEntry = existingWordEntries.find(
                 (entry) => entry.text === originalText
@@ -1228,9 +1226,7 @@ export const makeLibraryMachine = ({
               }
 
               const now = DateTime.toEpochMillis(yield* DateTime.now);
-              const wordEntry = yield* Schema.decodeEffect(
-                IndexedDb.Domain.Word
-              )({
+              const wordEntry = yield* Schema.decodeEffect(Domain.Word)({
                 id: existingWordEntry.id,
                 ...(existingWordEntry.archivedAt === undefined
                   ? {}

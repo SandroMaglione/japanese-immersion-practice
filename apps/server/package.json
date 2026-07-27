@@ -1,0 +1,23 @@
+{
+  "name": "@jip/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:create": "wrangler d1 create japanese-immersion-practice",
+    "db:migrate:local": "wrangler d1 migrations apply japanese-immersion-practice --local",
+    "db:migrate:remote": "wrangler d1 migrations apply japanese-immersion-practice --remote",
+    "test": "node --test --experimental-strip-types src/*.test.ts",
+    "typecheck": "tsgo --noEmit",
+    "types": "wrangler types worker-configuration.d.ts"
+  },
+  "dependencies": {
+    "@effect/sql-d1": "4.0.0-beta.92",
+    "@jip/data": "workspace:^",
+    "effect": "4.0.0-beta.92"
+  },
+  "devDependencies": {
+    "miniflare": "4.20260722.0",
+    "wrangler": "4.114.0"
+  }
+}

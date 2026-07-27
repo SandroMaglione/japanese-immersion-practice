@@ -1,4 +1,4 @@
-import { IndexedDb } from "@jip/indexeddb";
+import { Domain, Store } from "@jip/data";
 import { WordMemoryRecalculation, WordMemoryScheduler } from "@jip/services";
 import { DateTime, Effect, HashMap, Option, Schema } from "effect";
 import { createAsyncLogic, setup } from "xstate";
@@ -16,8 +16,8 @@ const WordMemoryStatusSchema = Schema.Literals([
 const WordMemoryOverviewWordSchema = Schema.Struct({
   isDue: Schema.Boolean,
   retrievability: Schema.Number,
-  state: IndexedDb.Domain.WordMemoryState,
-  word: IndexedDb.Domain.Word,
+  state: Domain.WordMemoryState,
+  word: Domain.Word,
 });
 
 const WordMemoryGroupSchema = Schema.Struct({
@@ -62,11 +62,8 @@ const MemoryStatuses = [
 
 const MillisecondsPerDay = 86_400_000;
 
-const _activeWords = ({
-  words,
-}: {
-  readonly words: readonly IndexedDb.Domain.Word[];
-}) => words.filter((word) => word.archivedAt === undefined);
+const _activeWords = ({ words }: { readonly words: readonly Domain.Word[] }) =>
+  words.filter((word) => word.archivedAt === undefined);
 
 const _median = ({ values }: { readonly values: readonly number[] }) => {
   if (values[0] === undefined) {
@@ -87,7 +84,7 @@ const _isDueBy = ({
   state,
 }: {
   readonly dueBy: number;
-  readonly state: IndexedDb.Domain.WordMemoryState;
+  readonly state: Domain.WordMemoryState;
 }) => state.phase !== "new" && DateTime.toEpochMillis(state.dueAt) <= dueBy;
 
 const _calculateRecalculation = ({
@@ -96,14 +93,14 @@ const _calculateRecalculation = ({
   states,
   words,
 }: {
-  readonly events: readonly IndexedDb.Domain.WordPracticeEvent[];
+  readonly events: readonly Domain.WordPracticeEvent[];
   readonly now: number;
-  readonly states: readonly IndexedDb.Domain.WordMemoryState[];
-  readonly words: readonly IndexedDb.Domain.Word[];
+  readonly states: readonly Domain.WordMemoryState[];
+  readonly words: readonly Domain.Word[];
 }) => {
   let eventsByWordId = HashMap.empty<
-    IndexedDb.Domain.WordId,
-    IndexedDb.Domain.WordPracticeEvent[]
+    Domain.WordId,
+    Domain.WordPracticeEvent[]
   >();
   const stateByWordId = HashMap.fromIterable(
     states.map((state) => [state.wordId, state] as const)
@@ -121,8 +118,8 @@ const _calculateRecalculation = ({
     }
   }
 
-  const currentStates: IndexedDb.Domain.WordMemoryState[] = [];
-  const nextStates: IndexedDb.Domain.WordMemoryState[] = [];
+  const currentStates: Domain.WordMemoryState[] = [];
+  const nextStates: Domain.WordMemoryState[] = [];
   let practiceEventCount = 0;
   let reclassifiedEventCount = 0;
 
@@ -153,7 +150,7 @@ const _calculateRecalculation = ({
 
     const { lastReviewAt: _lastReviewAt, ...stateWithoutLastReview } =
       currentState;
-    const nextState: IndexedDb.Domain.WordMemoryState = {
+    const nextState: Domain.WordMemoryState = {
       ...stateWithoutLastReview,
       phase: replay.card.phase,
       dueAt: DateTime.makeUnsafe(replay.card.dueAtMillis),
@@ -234,7 +231,7 @@ const _calculateRecalculation = ({
 export const makeWordMemoryMachine = ({
   runtime,
 }: {
-  readonly runtime: MachineRuntime<IndexedDb.Store.Store>;
+  readonly runtime: MachineRuntime<Store.Store>;
 }) =>
   setup({
     schemas: {
@@ -257,7 +254,7 @@ export const makeWordMemoryMachine = ({
         run: () =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const [words, states] = yield* Effect.all([
                 store.listWords(),
                 store.listMemoryStates(),
@@ -345,7 +342,7 @@ export const makeWordMemoryMachine = ({
         run: () =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const [events, states, words] = yield* Effect.all([
                 store.listPracticeEvents(),
                 store.listMemoryStates(),
@@ -371,7 +368,7 @@ export const makeWordMemoryMachine = ({
         run: () =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const [events, states, words] = yield* Effect.all([
                 store.listPracticeEvents(),
                 store.listMemoryStates(),

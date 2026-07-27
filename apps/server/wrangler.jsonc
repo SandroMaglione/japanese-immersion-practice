@@ -1,0 +1,22 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "japanese-immersion-practice",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-27",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/*", "!/assets/*"],
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "japanese-immersion-practice",
+      "migrations_dir": "migrations",
+      "database_id": "1e856a11-6667-4e7a-9d61-bb6bd8926dd7",
+    },
+  ],
+  "observability": {
+    "enabled": true,
+  },
+}

@@ -1,4 +1,4 @@
-import { IndexedDb } from "@jip/indexeddb";
+import { Domain, Store } from "@jip/data";
 import { FuriganaText, WordMemoryScheduler } from "@jip/services";
 import {
   Array as EffectArray,
@@ -29,17 +29,17 @@ const WordPracticeHistorySummarySchema = Schema.Struct({
   incorrectCount: Schema.Number,
   isDue: Schema.Boolean,
   retrievability: Schema.Number,
-  state: IndexedDb.Domain.WordMemoryState,
+  state: Domain.WordMemoryState,
   status: WordHistoryStatusSchema,
-  word: IndexedDb.Domain.Word,
+  word: Domain.Word,
 });
 
 const WordPracticeHistoryContextSchema = Schema.Struct({
   matchingSummaries: Schema.Array(WordPracticeHistorySummarySchema),
   message: Schema.optionalKey(Schema.String),
   query: Schema.String,
-  selectedAttempts: Schema.Array(IndexedDb.Domain.WordPracticeEvent),
-  selectedWordId: Schema.optionalKey(IndexedDb.Domain.WordId),
+  selectedAttempts: Schema.Array(Domain.WordPracticeEvent),
+  selectedWordId: Schema.optionalKey(Domain.WordId),
   summaries: Schema.Array(WordPracticeHistorySummarySchema),
   todayAttemptCount: Schema.Number,
   visibleSummaryCount: Schema.Number,
@@ -51,8 +51,8 @@ const WordPracticeHistoryDataSchema = Schema.Struct({
 });
 
 const WordAttemptsDataSchema = Schema.Struct({
-  attempts: Schema.Array(IndexedDb.Domain.WordPracticeEvent),
-  wordId: IndexedDb.Domain.WordId,
+  attempts: Schema.Array(Domain.WordPracticeEvent),
+  wordId: Domain.WordId,
 });
 
 const _errorMessage = ({
@@ -122,7 +122,7 @@ const _filterSummaries = ({
 export const makeWordPracticeHistoryMachine = ({
   runtime,
 }: {
-  readonly runtime: MachineRuntime<IndexedDb.Store.Store>;
+  readonly runtime: MachineRuntime<Store.Store>;
 }) =>
   setup({
     schemas: {
@@ -135,16 +135,14 @@ export const makeWordPracticeHistoryMachine = ({
         refresh: Schema.toStandardSchemaV1(Schema.Void),
         loadMore: Schema.toStandardSchemaV1(Schema.Void),
         selectWord: Schema.toStandardSchemaV1(
-          Schema.Struct({ wordId: IndexedDb.Domain.WordId })
+          Schema.Struct({ wordId: Domain.WordId })
         ),
       },
     },
     actorSources: {
       loadWordAttempts: createAsyncLogic({
         schemas: {
-          input: Schema.toStandardSchemaV1(
-            Schema.UndefinedOr(IndexedDb.Domain.WordId)
-          ),
+          input: Schema.toStandardSchemaV1(Schema.UndefinedOr(Domain.WordId)),
           output: Schema.toStandardSchemaV1(WordAttemptsDataSchema),
         },
         run: ({ input }) =>
@@ -156,7 +154,7 @@ export const makeWordPracticeHistoryMachine = ({
                 );
               }
 
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const word = yield* store.getWord(input);
 
               if (word === undefined || word.archivedAt !== undefined) {
@@ -181,7 +179,7 @@ export const makeWordPracticeHistoryMachine = ({
         run: () =>
           runtime.runPromise(
             Effect.gen(function* () {
-              const store = yield* IndexedDb.Store.Store;
+              const store = yield* Store.Store;
               const [events, words, states] = yield* Effect.all([
                 store.listPracticeEvents(),
                 store.listWords(),
@@ -190,7 +188,7 @@ export const makeWordPracticeHistoryMachine = ({
               const activeWords = words.filter(
                 (word) => word.archivedAt === undefined
               );
-              let activeWordIds = HashSet.empty<IndexedDb.Domain.WordId>();
+              let activeWordIds = HashSet.empty<Domain.WordId>();
 
               for (const word of activeWords) {
                 activeWordIds = HashSet.add(activeWordIds, word.id);
