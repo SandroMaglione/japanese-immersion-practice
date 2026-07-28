@@ -150,9 +150,16 @@ const WordImportJsonExampleSchema = Schema.Struct({
   ).annotate({
     description: `Japanese example sentence containing exactly one ${WordPracticePresentation.WordMarker} marker where the canonical word should be inserted. The word must fit without conjugation. ${FuriganaNotationDescription}`,
   }),
-  translation: ImportNonEmptyStringSchema.annotate({
+  translationTarget: ImportNonEmptyStringSchema.annotate({
     description:
-      "Intended translation for the example. It is hidden by default and shown when the learner requests a hint or reveals the answer.",
+      "Natural English phrase corresponding specifically to the missing Japanese word. It is inserted into the translation template and highlighted during practice.",
+  }),
+  translationTemplate: ImportNonEmptyStringSchema.check(
+    Schema.isPattern(WordPracticePresentation.TranslationTargetMarkerPattern, {
+      message: `Expected exactly one ${WordPracticePresentation.TranslationTargetMarker} marker.`,
+    })
+  ).annotate({
+    description: `Natural English translation of the complete Japanese example containing exactly one ${WordPracticePresentation.TranslationTargetMarker} marker where translationTarget should be inserted. Include all surrounding spaces and punctuation in the template.`,
   }),
 });
 
@@ -186,7 +193,7 @@ const WordImportJsonWordSchema = Schema.Struct({
 });
 
 const WordImportJsonSourceSchema = Schema.Struct({
-  formatVersion: Schema.Literal(1),
+  formatVersion: Schema.Literal(2),
   words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
 });
 
@@ -207,13 +214,13 @@ const WordExampleImportJsonWordSchema = Schema.Struct({
 });
 
 const WordExampleImportJsonSourceSchema = Schema.Struct({
-  formatVersion: Schema.Literal(1),
+  formatVersion: Schema.Literal(2),
   operation: Schema.Literal("addExamples"),
   words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
 });
 
 export const WordImportJsonSchema = Schema.Struct({
-  formatVersion: Schema.Literal(1).annotate({
+  formatVersion: Schema.Literal(2).annotate({
     description: "Version of the word import format.",
   }),
   words: Schema.Array(WordImportJsonWordSchema)
@@ -242,7 +249,7 @@ export const WordImportJsonSchemaDefinitionText = Formatter.formatJson(
 
 export const WordImportJsonExample = Formatter.formatJson(
   {
-    formatVersion: 1,
+    formatVersion: 2,
     words: [
       {
         description:
@@ -251,12 +258,14 @@ export const WordImportJsonExample = Formatter.formatJson(
           {
             note: "「資金を集める」は、活動に必要なお金を用意するときの自然な組み合わせ。",
             template: `新しい事業の${WordPracticePresentation.WordMarker}を集める。`,
-            translation: "Raise funds for a new business.",
+            translationTarget: "funds",
+            translationTemplate: `Raise ${WordPracticePresentation.TranslationTargetMarker} for a new business.`,
           },
           {
             note: "「資金を調達する」は、ビジネスや公的な場面でよく使う。",
             template: `銀行から${WordPracticePresentation.WordMarker}を調達した。`,
-            translation: "They secured financing from a bank.",
+            translationTarget: "financing",
+            translationTemplate: `They secured ${WordPracticePresentation.TranslationTargetMarker} from a bank.`,
           },
         ],
         text: "資[し]金[きん]",
@@ -268,14 +277,14 @@ export const WordImportJsonExample = Formatter.formatJson(
         examples: [
           {
             template: `駅で昔の友達と${WordPracticePresentation.WordMarker}なんて思わなかった。`,
-            translation:
-              "I never thought I would unexpectedly run into an old friend at the station.",
+            translationTarget: "unexpectedly run into",
+            translationTemplate: `I never thought I would ${WordPracticePresentation.TranslationTargetMarker} an old friend at the station.`,
           },
           {
             note: "約束して会う場合には使わない。",
             template: `旅行先で先生に${WordPracticePresentation.WordMarker}こともある。`,
-            translation:
-              "Sometimes you unexpectedly run into your teacher while traveling.",
+            translationTarget: "unexpectedly run into",
+            translationTemplate: `Sometimes you ${WordPracticePresentation.TranslationTargetMarker} your teacher while traveling.`,
           },
         ],
         text: "ばったり会[あ]う",
@@ -289,7 +298,7 @@ export const WordImportJsonExample = Formatter.formatJson(
 );
 
 export const WordExampleImportJsonSchema = Schema.Struct({
-  formatVersion: Schema.Literal(1).annotate({
+  formatVersion: Schema.Literal(2).annotate({
     description: "Version of the example enrichment format.",
   }),
   operation: Schema.Literal("addExamples").annotate({
@@ -324,7 +333,7 @@ export const WordExampleImportJsonSchemaDefinitionText = Formatter.formatJson(
 
 export const WordExampleImportJsonExample = Formatter.formatJson(
   {
-    formatVersion: 1,
+    formatVersion: 2,
     operation: "addExamples",
     words: [
       {
@@ -332,12 +341,13 @@ export const WordExampleImportJsonExample = Formatter.formatJson(
           {
             note: "「資金を提供する」は、事業や計画に必要なお金を出すときの自然な組み合わせ。",
             template: `政府は新しい計画に${WordPracticePresentation.WordMarker}を提供した。`,
-            translation: "The government provided funding for the new plan.",
+            translationTarget: "funding",
+            translationTemplate: `The government provided ${WordPracticePresentation.TranslationTargetMarker} for the new plan.`,
           },
           {
             template: `十分な${WordPracticePresentation.WordMarker}が集まらず、計画は延期された。`,
-            translation:
-              "The plan was postponed because sufficient funding could not be raised.",
+            translationTarget: "funding",
+            translationTemplate: `The plan was postponed because sufficient ${WordPracticePresentation.TranslationTargetMarker} could not be raised.`,
           },
         ],
         text: "資[し]金[きん]",
@@ -812,7 +822,8 @@ export const makeLibraryMachine = ({
                       ? {}
                       : { note: example.note }),
                     template: example.template,
-                    translation: example.translation,
+                    translationTarget: example.translationTarget,
+                    translationTemplate: example.translationTemplate,
                   })
                 );
                 const text = decodedWord.success.text;
@@ -999,7 +1010,8 @@ export const makeLibraryMachine = ({
                       ? {}
                       : { note: example.note }),
                     template: example.template,
-                    translation: example.translation,
+                    translationTarget: example.translationTarget,
+                    translationTemplate: example.translationTemplate,
                   })
                 );
                 const text = decodedWord.success.text;

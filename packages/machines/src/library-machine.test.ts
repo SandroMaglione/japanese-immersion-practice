@@ -13,7 +13,7 @@ test("example enrichment accepts strict versioned entries", async () => {
   const decoded = await Effect.runPromise(
     decodeExampleImport(
       {
-        formatVersion: 1,
+        formatVersion: 2,
         operation: "addExamples",
         words: [
           {
@@ -21,7 +21,8 @@ test("example enrichment accepts strict versioned entries", async () => {
               {
                 note: "A useful collocation.",
                 template: "{{word}}を集める。",
-                translation: "Raise funds.",
+                translationTarget: "funds",
+                translationTemplate: "Raise {{target}}.",
               },
             ],
             text: "資[し]金[きん]",
@@ -43,14 +44,15 @@ test("example enrichment rejects malformed examples", async () => {
     Effect.runPromise(
       decodeExampleImport(
         {
-          formatVersion: 1,
+          formatVersion: 2,
           operation: "addExamples",
           words: [
             {
               examples: [
                 {
                   template: "資金を集める。",
-                  translation: "Raise funds.",
+                  translationTarget: "funds",
+                  translationTemplate: "Raise {{target}}.",
                 },
               ],
               text: "資[し]金[きん]",
@@ -69,14 +71,15 @@ test("example enrichment rejects malformed examples", async () => {
 
 test("example enrichment rejects unknown properties", async () => {
   const payload: unknown = {
-    formatVersion: 1,
+    formatVersion: 2,
     operation: "addExamples",
     words: [
       {
         examples: [
           {
             template: "{{word}}を集める。",
-            translation: "Raise funds.",
+            translationTarget: "funds",
+            translationTemplate: "Raise {{target}}.",
           },
         ],
         text: "資[し]金[きん]",
@@ -93,5 +96,35 @@ test("example enrichment rejects unknown properties", async () => {
       })
     ),
     /Unexpected key/u
+  );
+});
+
+test("example enrichment rejects translation templates without a target marker", async () => {
+  await assert.rejects(
+    Effect.runPromise(
+      decodeExampleImport(
+        {
+          formatVersion: 2,
+          operation: "addExamples",
+          words: [
+            {
+              examples: [
+                {
+                  template: "{{word}}を集める。",
+                  translationTarget: "funds",
+                  translationTemplate: "Raise funds.",
+                },
+              ],
+              text: "資[し]金[きん]",
+            },
+          ],
+        },
+        {
+          errors: "all",
+          onExcessProperty: "error",
+        }
+      )
+    ),
+    /\{\{target\}\}/u
   );
 });

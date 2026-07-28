@@ -6,6 +6,7 @@ import {
   Effect,
   HashSet,
   Layer,
+  Result,
   Schema,
   String as EffectString,
 } from "effect";
@@ -66,6 +67,14 @@ const _PracticeEventRow = Schema.Struct({
 const _ExamplesJson = Schema.fromJsonString(
   Schema.Array(Domain.WordPracticeExample)
 );
+
+const _LegacyWordPracticeExample = Schema.Struct({
+  note: Schema.optional(Domain.NonEmptyString),
+  template: Domain.NonEmptyString,
+  translation: Domain.NonEmptyString,
+});
+
+const _StoredExamplesJson = Schema.fromJsonString(Schema.Array(Schema.Unknown));
 
 const _wordInsertSql = `INSERT INTO words (
   id, text, translation, description, examples, archived_at, created_at, updated_at
@@ -164,10 +173,38 @@ const _decodeWords = (rows: readonly unknown[]) =>
     rows,
     Effect.fn("D1Store.decodeWord")(function* (input) {
       const row = yield* Schema.decodeUnknownEffect(_WordRow)(input);
-      const examples =
+      const storedExampleInputs =
         row.examples === null
           ? undefined
-          : yield* Schema.decodeEffect(_ExamplesJson)(row.examples);
+          : yield* Schema.decodeEffect(_StoredExamplesJson)(row.examples);
+      const examples =
+        storedExampleInputs === undefined
+          ? undefined
+          : yield* Effect.forEach(
+              storedExampleInputs,
+              Effect.fn("D1Store.decodeWordExample")(function* (input) {
+                const currentExample = Schema.decodeUnknownResult(
+                  Domain.WordPracticeExample
+                )(input);
+
+                if (Result.isSuccess(currentExample)) {
+                  return currentExample.success;
+                }
+
+                const legacyExample = yield* Schema.decodeUnknownEffect(
+                  _LegacyWordPracticeExample
+                )(input);
+
+                return yield* Schema.decodeEffect(Domain.WordPracticeExample)({
+                  ...(legacyExample.note === undefined
+                    ? {}
+                    : { note: legacyExample.note }),
+                  template: legacyExample.template,
+                  translationTarget: legacyExample.translation,
+                  translationTemplate: "{{target}}",
+                });
+              })
+            );
 
       return yield* Schema.decodeEffect(Domain.Word)({
         id: row.id,

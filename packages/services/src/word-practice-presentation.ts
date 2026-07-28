@@ -3,6 +3,11 @@ export const WordMarker = "{{word}}";
 export const WordMarkerPattern =
   /^(?:(?!\{\{word\}\})[\s\S])*\{\{word\}\}(?:(?!\{\{word\}\})[\s\S])*$/;
 
+export const TranslationTargetMarker = "{{target}}";
+
+export const TranslationTargetMarkerPattern =
+  /^(?:(?!\{\{target\}\})[\s\S])*\{\{target\}\}(?:(?!\{\{target\}\})[\s\S])*$/;
+
 const _shuffle = <Value>({
   seed,
   values,

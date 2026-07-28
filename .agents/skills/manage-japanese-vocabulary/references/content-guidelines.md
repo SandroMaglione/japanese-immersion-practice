@@ -56,9 +56,23 @@ Default to three examples for a new word. Each example must:
 - accept the canonical word unchanged at that marker;
 - use per-character furigana for other kanji;
 - demonstrate a natural, distinct construction or collocation;
-- include a faithful English translation; and
+- include a natural English `translationTemplate` with exactly one
+  `{{target}}` marker;
+- include a concise `translationTarget` for the phrase corresponding
+  specifically to the missing Japanese word; and
 - include a concise Japanese note when it teaches nuance, register, grammar,
   or a fixed pairing.
+
+The translation template owns all surrounding spacing and punctuation. The
+target should read naturally when inserted and should identify the intended
+semantic contribution of the blank:
+
+```json
+{
+  "translationTemplate": "I was startled when someone {{target}} called my name.",
+  "translationTarget": "suddenly"
+}
+```
 
 Across three examples, prefer coverage such as an adverbial construction, a
 fixed collocation, and an attributive or conversational use. Avoid merely
@@ -68,7 +82,7 @@ changing names or nouns in otherwise identical sentences.
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "words": [
     {
       "text": "不[ふ]意[い]",
@@ -77,7 +91,8 @@ changing names or nouns in otherwise identical sentences.
       "examples": [
         {
           "template": "{{word}}に名[な]前[まえ]を呼[よ]ばれて、びっくりした。",
-          "translation": "I was startled when someone suddenly called my name.",
+          "translationTarget": "suddenly",
+          "translationTemplate": "I was startled when someone {{target}} called my name.",
           "note": "「〜に」は、予想外の出来事が突然起こる様子を表す。"
         }
       ]
@@ -95,7 +110,7 @@ Use the exact stored word text, including furigana:
 
 ```json
 {
-  "formatVersion": 1,
+  "formatVersion": 2,
   "operation": "addExamples",
   "words": [
     {
@@ -103,7 +118,8 @@ Use the exact stored word text, including furigana:
       "examples": [
         {
           "template": "背[はい]後[ご]から{{word}}に声[こえ]をかけられた。",
-          "translation": "Someone suddenly spoke to me from behind.",
+          "translationTarget": "suddenly",
+          "translationTemplate": "Someone {{target}} spoke to me from behind.",
           "note": "予想していない瞬間だったことを強調する。"
         }
       ]

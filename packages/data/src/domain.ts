@@ -104,7 +104,8 @@ export class WordPracticeExample extends Schema.Class<WordPracticeExample>(
   "WordPracticeExample"
 )({
   template: NonEmptyString,
-  translation: NonEmptyString,
+  translationTarget: NonEmptyString,
+  translationTemplate: NonEmptyString,
   note: Schema.optional(NonEmptyString),
 }) {}
 

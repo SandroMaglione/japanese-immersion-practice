@@ -124,6 +124,30 @@ function PracticeExampleSentence({
   );
 }
 
+function PracticeExampleTranslation({
+  target,
+  template,
+}: {
+  readonly target: string;
+  readonly template: string;
+}) {
+  const markerIndex = template.indexOf(
+    WordPracticePresentation.TranslationTargetMarker
+  );
+  const before = template.slice(0, markerIndex);
+  const after = template.slice(
+    markerIndex + WordPracticePresentation.TranslationTargetMarker.length
+  );
+
+  return (
+    <>
+      {before}
+      <span className="font-black text-gold">{target}</span>
+      {after}
+    </>
+  );
+}
+
 function PracticeSession({
   actor,
   isRevealed,
@@ -217,7 +241,10 @@ function PracticeSession({
               </p>
               {lastResult.example === undefined ? null : (
                 <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
-                  {lastResult.example.translation}
+                  <PracticeExampleTranslation
+                    target={lastResult.example.translationTarget}
+                    template={lastResult.example.translationTemplate}
+                  />
                 </p>
               )}
               {lastResult.example?.note === undefined ? null : (
@@ -258,12 +285,18 @@ function PracticeSession({
                       template={currentItem.example.template}
                     />
                   </h1>
+                  <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
+                    <PracticeExampleTranslation
+                      target={currentItem.example.translationTarget}
+                      template={currentItem.example.translationTemplate}
+                    />
+                  </p>
                   {hintVisible ? (
                     <p
                       aria-live="polite"
                       className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted"
                     >
-                      {currentItem.example.translation}
+                      {currentItem.word.description}
                     </p>
                   ) : null}
                 </>
@@ -298,7 +331,9 @@ function PracticeSession({
           </Tooltip.Root>
         ) : (
           <div className="mt-10 flex w-full min-w-0 gap-2">
-            {currentItem?.example === undefined || hintVisible ? null : (
+            {currentItem?.example === undefined ||
+            currentItem.word.description === undefined ||
+            hintVisible ? null : (
               <Tooltip.Root>
                 <Tooltip.Trigger
                   render={

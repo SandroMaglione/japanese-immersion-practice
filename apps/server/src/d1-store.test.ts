@@ -42,8 +42,9 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       description: "A country",
       examples: [
         {
-          template: "日[に]本[ほん]へ行[い]く。",
-          translation: "Go to Japan.",
+          template: "{{word}}へ行[い]く。",
+          translationTarget: "Japan",
+          translationTemplate: "Go to {{target}}.",
         },
       ],
       createdAt: now,
@@ -89,6 +90,10 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
     result.words[0]?.examples?.[0]?.template,
     word.examples?.[0]?.template
   );
+  assert.equal(
+    result.words[0]?.examples?.[0]?.translationTarget,
+    word.examples?.[0]?.translationTarget
+  );
   assert.equal(result.storedState?.phase, "new");
   assert.equal(
     result.storedState === undefined
@@ -96,4 +101,36 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       : DateTime.toEpochMillis(result.storedState.updatedAt),
     now
   );
+
+  await db
+    .prepare(
+      `INSERT INTO words (
+        id, text, translation, description, examples, archived_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      "9bb54e79-82d9-44ae-9179-5c5b12e6597b",
+      "資[し]金[きん]",
+      "funds",
+      null,
+      '[{"template":"{{word}}を集める。","translation":"Raise funds."}]',
+      null,
+      now,
+      now
+    )
+    .run();
+
+  const wordsWithLegacyExample = await Effect.runPromise(
+    Effect.gen(function* () {
+      const store = yield* Store.Store;
+
+      return yield* store.listWords();
+    }).pipe(Effect.provide(D1Store.layer(db)))
+  );
+  const migratedExample = wordsWithLegacyExample.find(
+    (entry) => entry.text === "資[し]金[きん]"
+  )?.examples?.[0];
+
+  assert.equal(migratedExample?.translationTarget, "Raise funds.");
+  assert.equal(migratedExample?.translationTemplate, "{{target}}");
 });

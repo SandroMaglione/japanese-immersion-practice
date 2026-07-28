@@ -3,7 +3,7 @@
   "properties": {
     "formatVersion": {
       "type": "number",
-      "enum": [1],
+      "enum": [2],
       "description": "Version of the example enrichment format."
     },
     "operation": {
@@ -55,7 +55,7 @@
                     }
                   ]
                 },
-                "translation": {
+                "translationTarget": {
                   "type": "string",
                   "allOf": [
                     {
@@ -63,12 +63,31 @@
                     },
                     {
                       "minLength": 1,
-                      "description": "Intended translation for the example. It is hidden by default and shown when the learner requests a hint or reveals the answer."
+                      "description": "Natural English phrase corresponding specifically to the missing Japanese word. It is inserted into the translation template and highlighted during practice."
+                    }
+                  ]
+                },
+                "translationTemplate": {
+                  "type": "string",
+                  "allOf": [
+                    {
+                      "pattern": "^\\S[\\s\\S]*\\S$|^\\S$|^$"
+                    },
+                    {
+                      "minLength": 1
+                    },
+                    {
+                      "pattern": "^(?:(?!\\{\\{target\\}\\})[\\s\\S])*\\{\\{target\\}\\}(?:(?!\\{\\{target\\}\\})[\\s\\S])*$",
+                      "description": "Natural English translation of the complete Japanese example containing exactly one {{target}} marker where translationTarget should be inserted. Include all surrounding spaces and punctuation in the template."
                     }
                   ]
                 }
               },
-              "required": ["template", "translation"],
+              "required": [
+                "template",
+                "translationTarget",
+                "translationTemplate"
+              ],
               "additionalProperties": false
             },
             "allOf": [

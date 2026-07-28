@@ -15,7 +15,8 @@ type JsonRecord = Record<string, unknown>;
 type ExampleInput = {
   readonly note?: string;
   readonly template: string;
-  readonly translation: string;
+  readonly translationTarget: string;
+  readonly translationTemplate: string;
 };
 
 type AddWordInput = {
@@ -38,6 +39,10 @@ type Operation =
   | {
       readonly kind: "addWords";
       readonly words: readonly AddWordInput[];
+    }
+  | {
+      readonly kind: "replaceExamples";
+      readonly words: readonly AddExamplesInput[];
     };
 
 type StoredWord = {
@@ -54,6 +59,7 @@ type StoredWord = {
 const _repositoryRoot = fileURLToPath(new URL("../../../../", import.meta.url));
 const _defaultBaseUrl =
   "https://japanese-immersion-practice.lass-maglio.workers.dev";
+const _translationTargetMarker = "{{target}}";
 const _wordMarker = "{{word}}";
 
 const _fail = (message: string): never => {
@@ -127,8 +133,13 @@ const _array = ({
   return value;
 };
 
-const _markerCount = (template: string) =>
-  template.split(_wordMarker).length - 1;
+const _markerCount = ({
+  marker,
+  template,
+}: {
+  readonly marker: string;
+  readonly template: string;
+}) => template.split(marker).length - 1;
 
 const _validateFurigana = ({
   path,
@@ -163,7 +174,7 @@ const _example = ({
   const examplePath = `${path}[${index}]`;
   const source = _record({ path: examplePath, value });
   _strictKeys({
-    allowed: ["note", "template", "translation"],
+    allowed: ["note", "template", "translationTarget", "translationTemplate"],
     path: examplePath,
     value: source,
   });
@@ -172,11 +183,27 @@ const _example = ({
     value: source.template,
   });
 
-  if (_markerCount(template) !== 1) {
+  if (_markerCount({ marker: _wordMarker, template }) !== 1) {
     _fail(`${examplePath}.template: expected exactly one ${_wordMarker}`);
   }
 
   _validateFurigana({ path: `${examplePath}.template`, text: template });
+  const translationTemplate = _string({
+    path: `${examplePath}.translationTemplate`,
+    value: source.translationTemplate,
+  });
+
+  if (
+    _markerCount({
+      marker: _translationTargetMarker,
+      template: translationTemplate,
+    }) !== 1
+  ) {
+    _fail(
+      `${examplePath}.translationTemplate: expected exactly one ${_translationTargetMarker}`
+    );
+  }
+
   const note = _optionalString({
     path: `${examplePath}.note`,
     value: source.note,
@@ -185,10 +212,11 @@ const _example = ({
   return {
     ...(note === undefined ? {} : { note }),
     template,
-    translation: _string({
-      path: `${examplePath}.translation`,
-      value: source.translation,
+    translationTarget: _string({
+      path: `${examplePath}.translationTarget`,
+      value: source.translationTarget,
     }),
+    translationTemplate,
   };
 };
 
@@ -213,17 +241,40 @@ const _examples = ({
   return examples;
 };
 
+const _examplesEqual = ({
+  left,
+  right,
+}: {
+  readonly left: readonly ExampleInput[] | undefined;
+  readonly right: readonly ExampleInput[] | undefined;
+}) =>
+  left?.length === right?.length &&
+  left?.every((example, index) => {
+    const candidate = right?.[index];
+
+    return (
+      candidate !== undefined &&
+      example.note === candidate.note &&
+      example.template === candidate.template &&
+      example.translationTarget === candidate.translationTarget &&
+      example.translationTemplate === candidate.translationTemplate
+    );
+  });
+
 const _parseOperation = (value: unknown): Operation => {
   const root = _record({ path: "payload", value });
   const formatVersion = root.formatVersion;
 
-  if (formatVersion !== 1) {
-    _fail("payload.formatVersion: expected 1");
+  if (formatVersion !== 2) {
+    _fail("payload.formatVersion: expected 2");
   }
 
   const sourceWords = _array({ path: "payload.words", value: root.words });
 
-  if (root.operation === "addExamples") {
+  if (
+    root.operation === "addExamples" ||
+    root.operation === "replaceExamples"
+  ) {
     _strictKeys({
       allowed: ["formatVersion", "operation", "words"],
       path: "payload",
@@ -245,11 +296,13 @@ const _parseOperation = (value: unknown): Operation => {
       };
     });
 
-    return { kind: "addExamples", words };
+    return { kind: root.operation, words };
   }
 
   if (root.operation !== undefined) {
-    _fail("payload.operation: expected addExamples or no operation");
+    _fail(
+      "payload.operation: expected addExamples, replaceExamples, or no operation"
+    );
   }
 
   _strictKeys({
@@ -530,17 +583,95 @@ const _planAddExamples = ({
   return { addedCounts, missing, unchanged, updates };
 };
 
+const _planReplaceExamples = ({
+  existing,
+  inputs,
+  now,
+}: {
+  readonly existing: readonly StoredWord[];
+  readonly inputs: readonly AddExamplesInput[];
+  readonly now: number;
+}) => {
+  const updates: StoredWord[] = [];
+
+  for (const input of inputs) {
+    const normalized = _normalizedText(input.text);
+    const matches = existing.filter(
+      (word) => _normalizedText(word.text) === normalized
+    );
+
+    if (matches.length !== 1) {
+      _fail(`${input.text}: expected exactly one production word`);
+    }
+
+    const stored = matches[0];
+
+    if (stored === undefined) {
+      _fail(`${input.text}: missing production match`);
+    }
+
+    const currentTemplates = new Set(
+      (stored.examples ?? []).map((example) =>
+        example.template.normalize("NFKC")
+      )
+    );
+    const replacementTemplates = new Set(
+      input.examples.map((example) => example.template.normalize("NFKC"))
+    );
+
+    if (
+      currentTemplates.size !== replacementTemplates.size ||
+      [...currentTemplates].some(
+        (template) => !replacementTemplates.has(template)
+      )
+    ) {
+      _fail(`${input.text}: replacement templates do not match production`);
+    }
+
+    const updated = {
+      ...stored,
+      examples: input.examples,
+      updatedAt: now,
+    };
+    Schema.decodeUnknownSync(Domain.Word)(updated);
+    updates.push(updated);
+  }
+
+  return { updates };
+};
+
 const _main = async () => {
   const { values } = parseArgs({
     options: {
       apply: { default: false, type: "boolean" },
       "base-url": { default: _defaultBaseUrl, type: "string" },
       input: { type: "string" },
+      list: { default: false, type: "boolean" },
       "validate-only": { default: false, type: "boolean" },
     },
     strict: true,
   });
-  const inputPath = values.input ?? _fail("Pass --input /absolute/path.json");
+  const inputPath =
+    values.input ??
+    (values.list ? undefined : _fail("Pass --input /absolute/path.json"));
+
+  if (values.list) {
+    const baseUrl = values["base-url"]?.replace(/\/$/u, "") ?? _defaultBaseUrl;
+    const rpc = await _rpcClient({ baseUrl });
+
+    console.log(
+      JSON.stringify({
+        mode: "list",
+        words: _asStoredWords(await rpc<unknown>("StoreListWords")),
+      })
+    );
+    return;
+  }
+
+  if (inputPath === undefined) {
+    return _fail("Pass --input /absolute/path.json");
+  }
+
   const rawPayload = JSON.parse(await readFile(inputPath, "utf8")) as unknown;
   const operation = _parseOperation(rawPayload);
   _assertUniqueTargets(operation);
@@ -604,6 +735,62 @@ const _main = async () => {
         mode: "apply",
         operation: operation.kind,
         skippedExisting: plan.skipped,
+        verified: true,
+      })
+    );
+    return;
+  }
+
+  if (operation.kind === "replaceExamples") {
+    const plan = _planReplaceExamples({
+      existing,
+      inputs: operation.words,
+      now,
+    });
+
+    if (!values.apply) {
+      console.log(
+        JSON.stringify({
+          mode: "dry-run",
+          operation: operation.kind,
+          updates: plan.updates.map((word) => ({
+            examples: word.examples?.length ?? 0,
+            text: word.text,
+          })),
+        })
+      );
+      return;
+    }
+
+    if (plan.updates.length > 0) {
+      await rpc("StoreUpdateWords", { words: plan.updates });
+    }
+
+    const stored = _asStoredWords(await rpc<unknown>("StoreListWords"));
+
+    for (const updated of plan.updates) {
+      const readBack = stored.find((word) => word.id === updated.id);
+
+      if (
+        readBack === undefined ||
+        !_examplesEqual({
+          left: readBack.examples,
+          right: updated.examples,
+        })
+      ) {
+        _fail(`Read-back verification failed for ${updated.text}`);
+      }
+    }
+
+    console.log(
+      JSON.stringify({
+        mode: "apply",
+        operation: operation.kind,
+        updated: plan.updates.map((word) => ({
+          examples: word.examples?.length ?? 0,
+          id: word.id,
+          text: word.text,
+        })),
         verified: true,
       })
     );

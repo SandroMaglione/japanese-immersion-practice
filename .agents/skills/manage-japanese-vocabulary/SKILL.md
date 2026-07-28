@@ -22,7 +22,7 @@ preserving the app's content conventions and FSRS state invariants.
    - Verify collocations and example patterns. Use a second reliable source
      when a sense or construction is uncommon or ambiguous.
    - Ask only when ambiguity would materially change the requested entry.
-4. Generate a version 1 JSON payload using the reference schemas. Unless the
+4. Generate a version 2 JSON payload using the reference schemas. Unless the
    user specifies otherwise, create three varied examples for each new word.
 5. Create a temporary JSON file outside the repository with `apply_patch`.
 6. Validate locally:
