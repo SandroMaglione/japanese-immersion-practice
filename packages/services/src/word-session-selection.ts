@@ -43,7 +43,7 @@ export type WordSessionSelectionState = {
   readonly recentWordIds: readonly string[];
 };
 
-export const MaximumActiveLearningWords = 20;
+export const MaximumActiveLearningWords = 8;
 export const MaximumMissesPerWordPerSession = 3;
 export const RecentWordLimit = 6;
 export const MinimumActiveLearningVariety = RecentWordLimit + 1;

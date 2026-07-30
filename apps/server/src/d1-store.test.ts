@@ -18,12 +18,16 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
   context.after(() => miniflare.dispose());
 
   const db = await miniflare.getD1Database("DB");
-  const migration = await readFile(
-    fileURLToPath(
-      new URL("../migrations/0001-initial.sql", import.meta.url).href
-    ),
-    "utf8"
-  );
+  const migration = (
+    await Promise.all(
+      ["0001-initial.sql", "0002-word-introductions.sql"].map((name) =>
+        readFile(
+          fileURLToPath(new URL(`../migrations/${name}`, import.meta.url).href),
+          "utf8"
+        )
+      )
+    )
+  ).join("\n");
 
   for (const statement of migration.split(";")) {
     const sql = statement.trim();

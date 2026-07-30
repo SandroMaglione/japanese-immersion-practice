@@ -136,6 +136,7 @@ export class WordMemoryState extends Schema.Class<WordMemoryState>(
   attemptCount: Schema.Number,
   correctCount: Schema.Number,
   incorrectCount: Schema.Number,
+  introducedAt: Schema.optional(Schema.DateTimeUtcFromMillis),
   lastReviewAt: Schema.optional(Schema.DateTimeUtcFromMillis),
   lastPracticedAt: Schema.DateTimeUtcFromMillis,
   schedulerVersion: NonEmptyString,

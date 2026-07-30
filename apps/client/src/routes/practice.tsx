@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { PracticeOverviewMachine } from "@jip/machines";
-import { WordPracticePresentation } from "@jip/services";
+import { WordPracticeMode, WordPracticePresentation } from "@jip/services";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import {
@@ -10,6 +10,7 @@ import {
   Check,
   CircleCheck,
   CircleX,
+  Eye,
   Lightbulb,
   LoaderCircle,
   RefreshCw,
@@ -35,7 +36,9 @@ function PracticeRoute() {
   const isFailure = snapshot.value === "Failure";
   const isLoading = snapshot.value === "Loading";
   const isRevealed = snapshot.value === "Revealed";
-  const isSubmitting = snapshot.value === "Submitting";
+  const isSubmitting =
+    snapshot.value === "Submitting" ||
+    snapshot.value === "RecordingIntroduction";
 
   if (isLoading) {
     return (
@@ -173,9 +176,22 @@ function PracticeSession({
     actor,
     (snapshot) => snapshot.context.hintVisible
   );
+  const answerVisible = useSelector(
+    actor,
+    (snapshot) => snapshot.context.answerVisible
+  );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
   const stats = useSelector(actor, (snapshot) => snapshot.context.stats);
   const isShowingResult = isRevealed && lastResult !== undefined;
+  const practiceMode =
+    currentItem === undefined
+      ? undefined
+      : WordPracticeMode.selectMode({
+          correctCount: currentItem.state.correctCount,
+          introduced: currentItem.state.introducedAt !== undefined,
+          phase: currentItem.state.phase,
+          stability: currentItem.state.stability,
+        });
   const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
   const displayedPhase = isShowingResult
     ? lastResult.phaseAfter
@@ -211,7 +227,10 @@ function PracticeSession({
         className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden text-center sm:gap-5"
         onSubmit={(event) => {
           event.preventDefault();
-          actor.trigger.submit();
+
+          if (practiceMode === "typed") {
+            actor.trigger.submit();
+          }
         }}
       >
         <div className="grid w-full shrink-0 content-start justify-items-center gap-3 px-1 pt-1">
@@ -258,7 +277,58 @@ function PracticeSession({
                 </p>
               )}
             </div>
-          ) : currentItem === undefined ? null : (
+          ) : currentItem === undefined ? null : practiceMode ===
+            "introduction" ? (
+            <div className="grid w-full gap-3">
+              <div className="text-xs font-black uppercase tracking-widest text-sky">
+                Meet this word
+              </div>
+              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
+                <WordText text={currentItem.word.text} />
+              </h1>
+              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
+                {currentItem.word.translation}
+              </p>
+              {currentItem.word.description === undefined ? null : (
+                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                  {currentItem.word.description}
+                </p>
+              )}
+              {currentItem.example === undefined ? null : (
+                <div className="mt-2 grid gap-2">
+                  <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
+                    <PracticeExampleSentence
+                      template={currentItem.example.template}
+                      wordText={currentItem.word.text}
+                    />
+                  </p>
+                  <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
+                    <PracticeExampleTranslation
+                      target={currentItem.example.translationTarget}
+                      template={currentItem.example.translationTemplate}
+                    />
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : practiceMode === "guided" && answerVisible ? (
+            <div className="grid w-full gap-3">
+              <div className="text-xs font-black uppercase tracking-widest text-teal">
+                Answer
+              </div>
+              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
+                <WordText text={currentItem.word.text} />
+              </h1>
+              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
+                {currentItem.word.translation}
+              </p>
+              {currentItem.word.description === undefined ? null : (
+                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                  {currentItem.word.description}
+                </p>
+              )}
+            </div>
+          ) : (
             <div className="grid w-full gap-2 sm:gap-3">
               {currentItem.example === undefined ? (
                 <>
@@ -329,6 +399,56 @@ function PracticeSession({
               </Tooltip.Positioner>
             </Tooltip.Portal>
           </Tooltip.Root>
+        ) : practiceMode === "introduction" ? (
+          <Button
+            type="button"
+            autoFocus
+            className="mt-10 inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+            disabled={isSubmitting}
+            onClick={() => {
+              actor.trigger.introduce();
+            }}
+          >
+            I’ve seen it
+            <ArrowRight aria-hidden="true" size={18} strokeWidth={2.5} />
+          </Button>
+        ) : practiceMode === "guided" && !answerVisible ? (
+          <Button
+            type="button"
+            autoFocus
+            className="mt-10 inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+            disabled={isSubmitting}
+            onClick={() => {
+              actor.trigger.reveal();
+            }}
+          >
+            <Eye aria-hidden="true" size={18} strokeWidth={2.5} />
+            Reveal
+          </Button>
+        ) : practiceMode === "guided" ? (
+          <div className="mt-10 grid w-full grid-cols-2 gap-3">
+            <Button
+              type="button"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-berry bg-panel px-4 text-sm font-black text-berry transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-berry disabled:opacity-60"
+              disabled={isSubmitting}
+              onClick={() => {
+                actor.trigger.rateIncorrect();
+              }}
+            >
+              Didn’t know
+            </Button>
+            <Button
+              type="button"
+              autoFocus
+              className="inline-flex h-14 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+              disabled={isSubmitting}
+              onClick={() => {
+                actor.trigger.rateCorrect();
+              }}
+            >
+              Knew it
+            </Button>
+          </div>
         ) : (
           <div className="mt-10 flex w-full min-w-0 gap-2">
             {currentItem?.example === undefined ||

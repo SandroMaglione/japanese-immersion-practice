@@ -31,6 +31,7 @@ const _MemoryStateRow = Schema.Struct({
   dueAt: Schema.Number,
   elapsedDays: Schema.Number,
   incorrectCount: Schema.Number,
+  introducedAt: Schema.NullOr(Schema.Number),
   lapses: Schema.Number,
   lastPracticedAt: Schema.Number,
   lastReviewAt: Schema.NullOr(Schema.Number),
@@ -93,9 +94,9 @@ ON CONFLICT(id) DO UPDATE SET
 const _memoryStateInsertSql = `INSERT INTO word_memory_states (
   word_id, phase, due_at, stability, difficulty, elapsed_days, scheduled_days,
   learning_steps, repetitions, lapses, attempt_count, correct_count,
-  incorrect_count, last_review_at, last_practiced_at, scheduler_version,
-  created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  incorrect_count, introduced_at, last_review_at, last_practiced_at,
+  scheduler_version, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 const _memoryStateUpsertSql = `${_memoryStateInsertSql}
 ON CONFLICT(word_id) DO UPDATE SET
@@ -111,6 +112,7 @@ ON CONFLICT(word_id) DO UPDATE SET
   attempt_count = excluded.attempt_count,
   correct_count = excluded.correct_count,
   incorrect_count = excluded.incorrect_count,
+  introduced_at = excluded.introduced_at,
   last_review_at = excluded.last_review_at,
   last_practiced_at = excluded.last_practiced_at,
   scheduler_version = excluded.scheduler_version,
@@ -161,6 +163,7 @@ const _memoryStateParameters = (state: Domain.WordMemoryState) =>
     state.attemptCount,
     state.correctCount,
     state.incorrectCount,
+    state.introducedAt === undefined ? null : _toMillis(state.introducedAt),
     state.lastReviewAt === undefined ? null : _toMillis(state.lastReviewAt),
     _toMillis(state.lastPracticedAt),
     state.schedulerVersion,
@@ -239,6 +242,9 @@ const _decodeMemoryStates = (rows: readonly unknown[]) =>
         attemptCount: row.attemptCount,
         correctCount: row.correctCount,
         incorrectCount: row.incorrectCount,
+        ...(row.introducedAt === null
+          ? {}
+          : { introducedAt: row.introducedAt }),
         ...(row.lastReviewAt === null
           ? {}
           : { lastReviewAt: row.lastReviewAt }),

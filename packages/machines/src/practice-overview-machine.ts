@@ -60,6 +60,8 @@ const PracticeSessionDataSchema = Schema.Struct({
   sessionId: Domain.WordPracticeSessionId,
 });
 
+const PracticeAssessmentSchema = Schema.Literals(["correct", "incorrect"]);
+
 const PracticeSubmitResultSchema = Schema.Struct({
   dueReviewCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
@@ -70,6 +72,8 @@ const PracticeSubmitResultSchema = Schema.Struct({
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
+  answerVisible: Schema.Boolean,
+  assessment: Schema.optionalKey(PracticeAssessmentSchema),
   currentItem: Schema.optionalKey(PracticeItemSchema),
   currentResponse: Schema.String,
   dueReviewCount: Schema.Number,
@@ -83,12 +87,21 @@ const PracticeOverviewContextSchema = Schema.Struct({
 });
 
 const SubmitPracticeInputSchema = Schema.Struct({
+  assessment: Schema.optionalKey(PracticeAssessmentSchema),
   currentItem: Schema.optionalKey(PracticeItemSchema),
   dueReviewCount: Schema.Number,
   response: Schema.String,
   selectionState: SessionSelectionStateSchema,
   sessionId: Schema.optionalKey(Domain.WordPracticeSessionId),
   stats: PracticeSessionStatsSchema,
+});
+
+const RecordIntroductionInputSchema = Schema.Struct({
+  currentItem: Schema.optionalKey(PracticeItemSchema),
+});
+
+const RecordIntroductionOutputSchema = Schema.Struct({
+  item: PracticeItemSchema,
 });
 
 type MemoryState = typeof Domain.WordMemoryState.Type;
@@ -292,12 +305,50 @@ export const makePracticeOverviewMachine = ({
         changeResponse: Schema.toStandardSchemaV1(
           Schema.Struct({ response: Schema.String })
         ),
+        introduce: Schema.toStandardSchemaV1(Schema.Void),
+        rateCorrect: Schema.toStandardSchemaV1(Schema.Void),
+        rateIncorrect: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
+        reveal: Schema.toStandardSchemaV1(Schema.Void),
         showHint: Schema.toStandardSchemaV1(Schema.Void),
         submit: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
     actorSources: {
+      recordIntroduction: createAsyncLogic({
+        schemas: {
+          input: Schema.toStandardSchemaV1(RecordIntroductionInputSchema),
+          output: Schema.toStandardSchemaV1(RecordIntroductionOutputSchema),
+        },
+        run: ({ input }) =>
+          runtime.runPromise(
+            Effect.gen(function* () {
+              const currentItem = input.currentItem;
+
+              if (currentItem === undefined) {
+                return yield* Effect.fail(
+                  new Error("Could not find a word to introduce.")
+                );
+              }
+
+              const introducedAt = DateTime.toEpochMillis(yield* DateTime.now);
+              const state = new Domain.WordMemoryState({
+                ...currentItem.state,
+                introducedAt: DateTime.makeUnsafe(introducedAt),
+                updatedAt: DateTime.makeUnsafe(introducedAt),
+              });
+              const store = yield* Store.Store;
+              yield* store.replaceMemoryStates([state]);
+
+              return {
+                item: {
+                  ...currentItem,
+                  state,
+                },
+              };
+            })
+          ),
+      }),
       loadPracticeSession: createAsyncLogic({
         schemas: {
           output: Schema.toStandardSchemaV1(PracticeSessionDataSchema),
@@ -353,8 +404,10 @@ export const makePracticeOverviewMachine = ({
               const reviewedAt = DateTime.toEpochMillis(yield* DateTime.now);
               const submittedText = input.response.trim();
               const isCorrect =
-                _normalizePracticeText({ text: submittedText }) ===
-                _normalizePracticeText({ text: currentItem.word.text });
+                input.assessment === undefined
+                  ? _normalizePracticeText({ text: submittedText }) ===
+                    _normalizePracticeText({ text: currentItem.word.text })
+                  : input.assessment === "correct";
               const result = isCorrect ? "correct" : "incorrect";
               const previousCard = _memoryCardFromState({
                 state: currentItem.state,
@@ -383,6 +436,13 @@ export const makePracticeOverviewMachine = ({
                   currentItem.state.correctCount + (isCorrect ? 1 : 0),
                 incorrectCount:
                   currentItem.state.incorrectCount + (isCorrect ? 0 : 1),
+                ...(currentItem.state.introducedAt === undefined
+                  ? {}
+                  : {
+                      introducedAt: _toEpochMillis({
+                        dateTime: currentItem.state.introducedAt,
+                      }),
+                    }),
                 ...(transition.card.lastReviewAtMillis === undefined
                   ? {}
                   : { lastReviewAt: transition.card.lastReviewAtMillis }),
@@ -491,6 +551,7 @@ export const makePracticeOverviewMachine = ({
     },
   }).createMachine({
     context: {
+      answerVisible: false,
       currentResponse: "",
       dueReviewCount: 0,
       hintVisible: false,
@@ -505,6 +566,8 @@ export const makePracticeOverviewMachine = ({
           onDone: ({ event }) => ({
             target: event.output.item === undefined ? "EmptyLibrary" : "Ready",
             context: {
+              answerVisible: false,
+              assessment: undefined,
               currentItem: event.output.item,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
@@ -539,6 +602,26 @@ export const makePracticeOverviewMachine = ({
           refresh: {
             target: "Loading",
           },
+          introduce: {
+            target: "RecordingIntroduction",
+          },
+          rateCorrect: {
+            target: "Submitting",
+            context: {
+              assessment: "correct",
+            },
+          },
+          rateIncorrect: {
+            target: "Submitting",
+            context: {
+              assessment: "incorrect",
+            },
+          },
+          reveal: {
+            context: {
+              answerVisible: true,
+            },
+          },
           showHint: {
             context: {
               hintVisible: true,
@@ -553,6 +636,7 @@ export const makePracticeOverviewMachine = ({
         invoke: {
           src: "submitPracticeAnswer",
           input: ({ context }) => ({
+            assessment: context.assessment,
             currentItem: context.currentItem,
             dueReviewCount: context.dueReviewCount,
             response: context.currentResponse,
@@ -563,6 +647,8 @@ export const makePracticeOverviewMachine = ({
           onDone: ({ event }) => ({
             target: "Revealed",
             context: {
+              answerVisible: false,
+              assessment: undefined,
               currentItem: undefined,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
@@ -595,6 +681,7 @@ export const makePracticeOverviewMachine = ({
               ? {
                   target: "Loading",
                   context: {
+                    answerVisible: false,
                     hintVisible: false,
                     lastResult: undefined,
                   },
@@ -602,12 +689,41 @@ export const makePracticeOverviewMachine = ({
               : {
                   target: "Ready",
                   context: {
+                    answerVisible: false,
+                    assessment: undefined,
                     currentItem: context.nextItem,
                     hintVisible: false,
                     lastResult: undefined,
                     nextItem: undefined,
                   },
                 },
+        },
+      },
+      RecordingIntroduction: {
+        invoke: {
+          src: "recordIntroduction",
+          input: ({ context }) => ({
+            currentItem: context.currentItem,
+          }),
+          onDone: ({ event }) => ({
+            target: "Ready",
+            context: {
+              answerVisible: false,
+              assessment: undefined,
+              currentItem: event.output.item,
+              currentResponse: "",
+              message: undefined,
+            },
+          }),
+          onError: ({ event }) => ({
+            target: "Ready",
+            context: {
+              message:
+                event.error instanceof Error
+                  ? event.error.message
+                  : "Could not save the introduction.",
+            },
+          }),
         },
       },
       EmptyLibrary: {
