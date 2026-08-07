@@ -26,6 +26,7 @@ export const errorFromUnknown = ({
 export class WordSelectionPool extends Schema.Class<WordSelectionPool>(
   "WordSelectionPool"
 )({
+  activeWordCount: Schema.Number,
   activeLearningCount: Schema.Number,
   dueLearning: Schema.Array(Domain.WordMemoryState),
   dueReview: Schema.Array(Domain.WordMemoryState),

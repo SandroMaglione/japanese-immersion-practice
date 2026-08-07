@@ -85,7 +85,7 @@ export const buildVersion5Data = ({
         card: memoryCard,
         kind: "scheduled",
         now: submission.submittedAt,
-        result,
+        rating: result === "correct" ? "good" : "again",
       });
       const legacyBatch =
         submission.batchId === undefined
@@ -105,11 +105,14 @@ export const buildVersion5Data = ({
         submittedText: submission.submittedText,
         reviewedAt: submission.submittedAt,
         result,
+        rating: result === "correct" ? "good" : "again",
+        stage: "contextRecall",
         kind: "scheduled",
         source: memoryCard.phase === "new" ? "new" : memoryCard.phase,
         previousDueAt: transition.previousDueAtMillis,
         nextDueAt: transition.card.dueAtMillis,
         changedSchedule: transition.changedSchedule,
+        phaseBefore: memoryCard.phase,
         phaseAfter: transition.card.phase,
         stabilityAfter: transition.card.stability,
         difficultyAfter: transition.card.difficulty,
@@ -135,6 +138,10 @@ export const buildVersion5Data = ({
     words.push(word);
     states.push({
       wordId,
+      stage: "contextRecall",
+      stageStartedAt: legacyWord.createdAt,
+      stageAttemptCount: submissionsForWord.length,
+      stageMasteryStreak: 0,
       phase: memoryCard.phase,
       dueAt: memoryCard.dueAtMillis,
       stability: memoryCard.stability,

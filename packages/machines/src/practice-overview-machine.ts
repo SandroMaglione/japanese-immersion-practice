@@ -1,8 +1,8 @@
 import { Domain, Store } from "@jip/data";
 import {
-  FuriganaText,
   WordMemoryScheduler,
   WordPracticePresentation,
+  WordPracticeStage,
   WordSessionSelection,
 } from "@jip/services";
 import { DateTime, Effect, Schema } from "effect";
@@ -44,6 +44,9 @@ const PracticeResultSchema = Schema.Struct({
   difficulty: Schema.Number,
   example: Schema.optionalKey(Domain.WordPracticeExample),
   isCorrect: Schema.Boolean,
+  rating: Domain.WordPracticeRating,
+  stage: Domain.WordPracticeStage,
+  promotedTo: Schema.optionalKey(Domain.WordPracticeStage),
   kind: Domain.WordPracticeKind,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
   phaseAfter: Domain.WordMemoryPhase,
@@ -54,13 +57,12 @@ const PracticeResultSchema = Schema.Struct({
 });
 
 const PracticeSessionDataSchema = Schema.Struct({
+  activeWordCount: Schema.Number,
   dueReviewCount: Schema.Number,
   item: Schema.optionalKey(PracticeItemSchema),
   selectionState: SessionSelectionStateSchema,
   sessionId: Domain.WordPracticeSessionId,
 });
-
-const PracticeAssessmentSchema = Schema.Literals(["correct", "incorrect"]);
 
 const PracticeSubmitResultSchema = Schema.Struct({
   dueReviewCount: Schema.Number,
@@ -72,8 +74,9 @@ const PracticeSubmitResultSchema = Schema.Struct({
 });
 
 const PracticeOverviewContextSchema = Schema.Struct({
+  activeWordCount: Schema.Number,
   answerVisible: Schema.Boolean,
-  assessment: Schema.optionalKey(PracticeAssessmentSchema),
+  rating: Schema.optionalKey(Domain.WordPracticeRating),
   currentItem: Schema.optionalKey(PracticeItemSchema),
   currentResponse: Schema.String,
   dueReviewCount: Schema.Number,
@@ -87,7 +90,7 @@ const PracticeOverviewContextSchema = Schema.Struct({
 });
 
 const SubmitPracticeInputSchema = Schema.Struct({
-  assessment: Schema.optionalKey(PracticeAssessmentSchema),
+  rating: Schema.optionalKey(Domain.WordPracticeRating),
   currentItem: Schema.optionalKey(PracticeItemSchema),
   dueReviewCount: Schema.Number,
   response: Schema.String,
@@ -125,9 +128,6 @@ const InitialStats = {
 
 const _toEpochMillis = ({ dateTime }: { readonly dateTime: DateTime.Utc }) =>
   DateTime.toEpochMillis(dateTime);
-
-const _normalizePracticeText = ({ text }: { readonly text: string }) =>
-  FuriganaText.normalizePlainText({ text });
 
 const _memoryCardFromState = ({
   state,
@@ -246,6 +246,7 @@ const _loadNextPracticeItem = ({
 
     if (selection === undefined) {
       return {
+        activeWordCount: storedPools.activeWordCount,
         dueReviewCount: storedPools.dueReviewCount,
         selectionState,
       };
@@ -263,6 +264,7 @@ const _loadNextPracticeItem = ({
 
     if (state === undefined || word === undefined) {
       return {
+        activeWordCount: storedPools.activeWordCount,
         dueReviewCount: storedPools.dueReviewCount,
         selectionState,
       };
@@ -279,6 +281,7 @@ const _loadNextPracticeItem = ({
     });
 
     return {
+      activeWordCount: storedPools.activeWordCount,
       dueReviewCount: storedPools.dueReviewCount,
       item: {
         ...(example === undefined ? {} : { example }),
@@ -306,8 +309,10 @@ export const makePracticeOverviewMachine = ({
           Schema.Struct({ response: Schema.String })
         ),
         introduce: Schema.toStandardSchemaV1(Schema.Void),
-        rateCorrect: Schema.toStandardSchemaV1(Schema.Void),
-        rateIncorrect: Schema.toStandardSchemaV1(Schema.Void),
+        rateAgain: Schema.toStandardSchemaV1(Schema.Void),
+        rateHard: Schema.toStandardSchemaV1(Schema.Void),
+        rateGood: Schema.toStandardSchemaV1(Schema.Void),
+        rateEasy: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
         reveal: Schema.toStandardSchemaV1(Schema.Void),
         showHint: Schema.toStandardSchemaV1(Schema.Void),
@@ -403,11 +408,15 @@ export const makePracticeOverviewMachine = ({
 
               const reviewedAt = DateTime.toEpochMillis(yield* DateTime.now);
               const submittedText = input.response.trim();
-              const isCorrect =
-                input.assessment === undefined
-                  ? _normalizePracticeText({ text: submittedText }) ===
-                    _normalizePracticeText({ text: currentItem.word.text })
-                  : input.assessment === "correct";
+              const rating = input.rating;
+
+              if (rating === undefined) {
+                return yield* Effect.fail(
+                  new Error("Choose a rating before saving the review.")
+                );
+              }
+
+              const isCorrect = rating !== "again";
               const result = isCorrect ? "correct" : "incorrect";
               const previousCard = _memoryCardFromState({
                 state: currentItem.state,
@@ -416,21 +425,41 @@ export const makePracticeOverviewMachine = ({
                 card: previousCard,
                 kind: currentItem.kind,
                 now: reviewedAt,
-                result,
+                rating,
+              });
+              const stageTransition = WordPracticeStage.transitionAfterRating({
+                card: transition.card,
+                hasExamples: (currentItem.word.examples?.length ?? 0) > 0,
+                ...(previousCard.lastReviewAtMillis === undefined
+                  ? {}
+                  : { lastReviewAtMillis: previousCard.lastReviewAtMillis }),
+                now: reviewedAt,
+                phaseBefore: previousCard.phase,
+                rating,
+                stage: currentItem.state.stage,
+                stageAttemptCount: currentItem.state.stageAttemptCount,
+                stageMasteryStreak: currentItem.state.stageMasteryStreak,
+                stageStartedAtMillis: _toEpochMillis({
+                  dateTime: currentItem.state.stageStartedAt,
+                }),
               });
               const nextState = yield* Schema.decodeEffect(
                 Domain.WordMemoryState
               )({
                 wordId: currentItem.state.wordId,
-                phase: transition.card.phase,
-                dueAt: transition.card.dueAtMillis,
-                stability: transition.card.stability,
-                difficulty: transition.card.difficulty,
-                elapsedDays: transition.card.elapsedDays,
-                scheduledDays: transition.card.scheduledDays,
-                learningSteps: transition.card.learningSteps,
-                repetitions: transition.card.repetitions,
-                lapses: transition.card.lapses,
+                stage: stageTransition.stage,
+                stageStartedAt: stageTransition.stageStartedAtMillis,
+                stageAttemptCount: stageTransition.stageAttemptCount,
+                stageMasteryStreak: stageTransition.stageMasteryStreak,
+                phase: stageTransition.card.phase,
+                dueAt: stageTransition.card.dueAtMillis,
+                stability: stageTransition.card.stability,
+                difficulty: stageTransition.card.difficulty,
+                elapsedDays: stageTransition.card.elapsedDays,
+                scheduledDays: stageTransition.card.scheduledDays,
+                learningSteps: stageTransition.card.learningSteps,
+                repetitions: stageTransition.card.repetitions,
+                lapses: stageTransition.card.lapses,
                 attemptCount: currentItem.state.attemptCount + 1,
                 correctCount:
                   currentItem.state.correctCount + (isCorrect ? 1 : 0),
@@ -443,9 +472,9 @@ export const makePracticeOverviewMachine = ({
                         dateTime: currentItem.state.introducedAt,
                       }),
                     }),
-                ...(transition.card.lastReviewAtMillis === undefined
+                ...(stageTransition.card.lastReviewAtMillis === undefined
                   ? {}
-                  : { lastReviewAt: transition.card.lastReviewAtMillis }),
+                  : { lastReviewAt: stageTransition.card.lastReviewAtMillis }),
                 lastPracticedAt: reviewedAt,
                 schedulerVersion: WordMemoryScheduler.SchedulerVersion,
                 createdAt: _toEpochMillis({
@@ -461,14 +490,20 @@ export const makePracticeOverviewMachine = ({
                 submittedText,
                 reviewedAt,
                 result,
+                rating,
+                stage: currentItem.state.stage,
+                ...(stageTransition.promotedTo === undefined
+                  ? {}
+                  : { promotedTo: stageTransition.promotedTo }),
                 kind: currentItem.kind,
                 source: currentItem.source,
                 previousDueAt: transition.previousDueAtMillis,
-                nextDueAt: transition.card.dueAtMillis,
+                nextDueAt: stageTransition.card.dueAtMillis,
                 changedSchedule: transition.changedSchedule,
-                phaseAfter: transition.card.phase,
-                stabilityAfter: transition.card.stability,
-                difficultyAfter: transition.card.difficulty,
+                phaseBefore: previousCard.phase,
+                phaseAfter: stageTransition.card.phase,
+                stabilityAfter: stageTransition.card.stability,
+                difficultyAfter: stageTransition.card.difficulty,
                 schedulerVersion: WordMemoryScheduler.SchedulerVersion,
                 sessionId,
                 sessionPosition: input.stats.attemptCount,
@@ -527,19 +562,24 @@ export const makePracticeOverviewMachine = ({
                 nextItem: nextSelection.item,
                 result: {
                   changedSchedule: transition.changedSchedule,
-                  difficulty: transition.card.difficulty,
+                  difficulty: stageTransition.card.difficulty,
                   ...(currentItem.example === undefined
                     ? {}
                     : { example: currentItem.example }),
                   isCorrect,
+                  rating,
+                  stage: currentItem.state.stage,
+                  ...(stageTransition.promotedTo === undefined
+                    ? {}
+                    : { promotedTo: stageTransition.promotedTo }),
                   kind: currentItem.kind,
                   nextReviewAt: DateTime.makeUnsafe(
-                    transition.card.dueAtMillis
+                    stageTransition.card.dueAtMillis
                   ),
-                  phaseAfter: transition.card.phase,
+                  phaseAfter: stageTransition.card.phase,
                   phaseBefore: currentItem.state.phase,
                   source: currentItem.source,
-                  stability: transition.card.stability,
+                  stability: stageTransition.card.stability,
                   word: currentItem.word,
                 },
                 selectionState: nextSelection.selectionState,
@@ -551,7 +591,9 @@ export const makePracticeOverviewMachine = ({
     },
   }).createMachine({
     context: {
+      activeWordCount: 0,
       answerVisible: false,
+      rating: undefined,
       currentResponse: "",
       dueReviewCount: 0,
       hintVisible: false,
@@ -564,10 +606,16 @@ export const makePracticeOverviewMachine = ({
         invoke: {
           src: "loadPracticeSession",
           onDone: ({ event }) => ({
-            target: event.output.item === undefined ? "EmptyLibrary" : "Ready",
+            target:
+              event.output.item === undefined
+                ? event.output.activeWordCount === 0
+                  ? "EmptyLibrary"
+                  : "Complete"
+                : "Ready",
             context: {
+              activeWordCount: event.output.activeWordCount,
               answerVisible: false,
-              assessment: undefined,
+              rating: undefined,
               currentItem: event.output.item,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
@@ -605,16 +653,28 @@ export const makePracticeOverviewMachine = ({
           introduce: {
             target: "RecordingIntroduction",
           },
-          rateCorrect: {
+          rateGood: {
             target: "Submitting",
             context: {
-              assessment: "correct",
+              rating: "good",
             },
           },
-          rateIncorrect: {
+          rateAgain: {
             target: "Submitting",
             context: {
-              assessment: "incorrect",
+              rating: "again",
+            },
+          },
+          rateHard: {
+            target: "Submitting",
+            context: {
+              rating: "hard",
+            },
+          },
+          rateEasy: {
+            target: "Submitting",
+            context: {
+              rating: "easy",
             },
           },
           reveal: {
@@ -628,7 +688,9 @@ export const makePracticeOverviewMachine = ({
             },
           },
           submit: {
-            target: "Submitting",
+            context: {
+              answerVisible: true,
+            },
           },
         },
       },
@@ -636,7 +698,7 @@ export const makePracticeOverviewMachine = ({
         invoke: {
           src: "submitPracticeAnswer",
           input: ({ context }) => ({
-            assessment: context.assessment,
+            rating: context.rating,
             currentItem: context.currentItem,
             dueReviewCount: context.dueReviewCount,
             response: context.currentResponse,
@@ -648,7 +710,7 @@ export const makePracticeOverviewMachine = ({
             target: "Revealed",
             context: {
               answerVisible: false,
-              assessment: undefined,
+              rating: undefined,
               currentItem: undefined,
               currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
@@ -690,7 +752,7 @@ export const makePracticeOverviewMachine = ({
                   target: "Ready",
                   context: {
                     answerVisible: false,
-                    assessment: undefined,
+                    rating: undefined,
                     currentItem: context.nextItem,
                     hintVisible: false,
                     lastResult: undefined,
@@ -709,7 +771,7 @@ export const makePracticeOverviewMachine = ({
             target: "Ready",
             context: {
               answerVisible: false,
-              assessment: undefined,
+              rating: undefined,
               currentItem: event.output.item,
               currentResponse: "",
               message: undefined,
@@ -727,6 +789,13 @@ export const makePracticeOverviewMachine = ({
         },
       },
       EmptyLibrary: {
+        on: {
+          refresh: {
+            target: "Loading",
+          },
+        },
+      },
+      Complete: {
         on: {
           refresh: {
             target: "Loading",

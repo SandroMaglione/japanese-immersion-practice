@@ -142,5 +142,12 @@ export const toPlainText = ({ text }: { readonly text: string }) =>
     .map((segment) => (segment.type === "text" ? segment.text : segment.base))
     .join("");
 
+export const toReadingText = ({ text }: { readonly text: string }) =>
+  parse({ text })
+    .map((segment) =>
+      segment.type === "text" ? segment.text : segment.reading
+    )
+    .join("");
+
 export const normalizePlainText = ({ text }: { readonly text: string }) =>
   toPlainText({ text }).trim().normalize("NFKC");

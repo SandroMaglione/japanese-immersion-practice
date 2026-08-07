@@ -20,7 +20,11 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
   const db = await miniflare.getD1Database("DB");
   const migration = (
     await Promise.all(
-      ["0001-initial.sql", "0002-word-introductions.sql"].map((name) =>
+      [
+        "0001-initial.sql",
+        "0002-word-introductions.sql",
+        "0003-staged-practice-reset.sql",
+      ].map((name) =>
         readFile(
           fileURLToPath(new URL(`../migrations/${name}`, import.meta.url).href),
           "utf8"
@@ -58,6 +62,10 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
   const state = await Effect.runPromise(
     Schema.decodeEffect(Domain.WordMemoryState)({
       wordId: word.id,
+      stage: "recognition",
+      stageStartedAt: now,
+      stageAttemptCount: 0,
+      stageMasteryStreak: 0,
       phase: "new",
       dueAt: now,
       stability: 0,
@@ -105,6 +113,53 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       : DateTime.toEpochMillis(result.storedState.updatedAt),
     now
   );
+
+  const reviewedState = new Domain.WordMemoryState({
+    ...state,
+    phase: "learning",
+    dueAt: DateTime.makeUnsafe(now + 600_000),
+    attemptCount: 1,
+    correctCount: 1,
+    lastReviewAt: DateTime.makeUnsafe(now),
+    lastPracticedAt: DateTime.makeUnsafe(now),
+    updatedAt: DateTime.makeUnsafe(now),
+  });
+  const practiceEvent = await Effect.runPromise(
+    Schema.decodeEffect(Domain.WordPracticeEvent)({
+      id: "94f9828b-5ed7-4c45-8a3f-3192625f29c5",
+      wordId: word.id,
+      submittedText: "",
+      reviewedAt: now,
+      result: "correct",
+      rating: "good",
+      stage: "recognition",
+      kind: "scheduled",
+      source: "new",
+      previousDueAt: now,
+      nextDueAt: now + 600_000,
+      changedSchedule: true,
+      phaseBefore: "new",
+      phaseAfter: "learning",
+      stabilityAfter: 2,
+      difficultyAfter: 5,
+      schedulerVersion: "test",
+      sessionId: "86cff127-96fb-40f7-854e-8a43f6e4915d",
+      sessionPosition: 0,
+    })
+  );
+  const storedEvents = await Effect.runPromise(
+    Effect.gen(function* () {
+      const store = yield* Store.Store;
+      yield* store.savePracticeResult({
+        event: practiceEvent,
+        state: reviewedState,
+      });
+      return yield* store.listPracticeEventsByWord(word.id);
+    }).pipe(Effect.provide(D1Store.layer(db)))
+  );
+
+  assert.equal(storedEvents[0]?.rating, "good");
+  assert.equal(storedEvents[0]?.stage, "recognition");
 
   await db
     .prepare(

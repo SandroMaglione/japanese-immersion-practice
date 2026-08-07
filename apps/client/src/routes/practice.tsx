@@ -2,9 +2,15 @@ import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
 import { Tooltip } from "@base-ui/react/tooltip";
 import { PracticeOverviewMachine } from "@jip/machines";
-import { WordPracticeMode, WordPracticePresentation } from "@jip/services";
+import {
+  FuriganaText,
+  WordMemoryScheduler,
+  WordPracticePresentation,
+  WordPracticeStage,
+} from "@jip/services";
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
+import { DateTime } from "effect";
 import {
   ArrowRight,
   Check,
@@ -18,13 +24,19 @@ import {
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
-import { formatDateTime } from "../lib/format.ts";
+import { formatDateTime, formatReviewInterval } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const practiceOverviewMachine =
   PracticeOverviewMachine.makePracticeOverviewMachine({
     runtime: RuntimeClient,
   });
+
+const StageLabels = {
+  recognition: "Recognition",
+  meaningRecall: "Meaning recall",
+  contextRecall: "Context recall",
+} as const;
 
 export const Route = createFileRoute("/practice")({
   component: PracticeRoute,
@@ -33,6 +45,7 @@ export const Route = createFileRoute("/practice")({
 function PracticeRoute() {
   const [snapshot, , actor] = useMachine(practiceOverviewMachine);
   const isEmptyLibrary = snapshot.value === "EmptyLibrary";
+  const isComplete = snapshot.value === "Complete";
   const isFailure = snapshot.value === "Failure";
   const isLoading = snapshot.value === "Loading";
   const isRevealed = snapshot.value === "Revealed";
@@ -81,6 +94,30 @@ function PracticeRoute() {
         >
           Add words
         </Link>
+      </section>
+    );
+  }
+
+  if (isComplete) {
+    return (
+      <section className="flex min-w-0 flex-col items-center justify-center gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:py-6">
+        <CircleCheck className="text-teal" size={42} strokeWidth={2.5} />
+        <div>
+          <div className="text-xl font-black">Scheduled work complete</div>
+          <div className="mt-1 text-sm font-semibold text-ink-muted">
+            No reviews or new stages are due right now.
+          </div>
+        </div>
+        <Button
+          type="button"
+          className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink"
+          onClick={() => {
+            actor.trigger.refresh();
+          }}
+        >
+          <RefreshCw size={16} strokeWidth={2.5} />
+          Check again
+        </Button>
       </section>
     );
   }
@@ -186,12 +223,114 @@ function PracticeSession({
   const practiceMode =
     currentItem === undefined
       ? undefined
-      : WordPracticeMode.selectMode({
-          correctCount: currentItem.state.correctCount,
-          introduced: currentItem.state.introducedAt !== undefined,
+      : currentItem.state.introducedAt === undefined
+        ? "introduction"
+        : currentItem.state.stage;
+  const ratingNow = Date.now();
+  const ratingCard: WordMemoryScheduler.WordMemoryCard | undefined =
+    currentItem === undefined
+      ? undefined
+      : {
+          difficulty: currentItem.state.difficulty,
+          dueAtMillis: DateTime.toEpochMillis(currentItem.state.dueAt),
+          elapsedDays: currentItem.state.elapsedDays,
+          lapses: currentItem.state.lapses,
+          ...(currentItem.state.lastReviewAt === undefined
+            ? {}
+            : {
+                lastReviewAtMillis: DateTime.toEpochMillis(
+                  currentItem.state.lastReviewAt
+                ),
+              }),
+          learningSteps: currentItem.state.learningSteps,
           phase: currentItem.state.phase,
+          repetitions: currentItem.state.repetitions,
+          scheduledDays: currentItem.state.scheduledDays,
           stability: currentItem.state.stability,
+        };
+  const ratingPreviewInput =
+    currentItem === undefined || ratingCard === undefined
+      ? undefined
+      : {
+          card: ratingCard,
+          hasExamples: (currentItem.word.examples?.length ?? 0) > 0,
+          ...(ratingCard.lastReviewAtMillis === undefined
+            ? {}
+            : { lastReviewAtMillis: ratingCard.lastReviewAtMillis }),
+          now: ratingNow,
+          stage: currentItem.state.stage,
+          stageAttemptCount: currentItem.state.stageAttemptCount,
+          stageMasteryStreak: currentItem.state.stageMasteryStreak,
+          stageStartedAtMillis: DateTime.toEpochMillis(
+            currentItem.state.stageStartedAt
+          ),
+        };
+  const againPreview =
+    ratingPreviewInput === undefined
+      ? undefined
+      : WordPracticeStage.previewRating({
+          ...ratingPreviewInput,
+          rating: "again",
         });
+  const hardPreview =
+    ratingPreviewInput === undefined
+      ? undefined
+      : WordPracticeStage.previewRating({
+          ...ratingPreviewInput,
+          rating: "hard",
+        });
+  const goodPreview =
+    ratingPreviewInput === undefined
+      ? undefined
+      : WordPracticeStage.previewRating({
+          ...ratingPreviewInput,
+          rating: "good",
+        });
+  const easyPreview =
+    ratingPreviewInput === undefined
+      ? undefined
+      : WordPracticeStage.previewRating({
+          ...ratingPreviewInput,
+          rating: "easy",
+        });
+  const ratingIntervals = {
+    again:
+      againPreview === undefined
+        ? undefined
+        : againPreview.promotedTo === undefined
+          ? formatReviewInterval({
+              dueAt: againPreview.card.dueAtMillis,
+              now: ratingNow,
+            })
+          : "next stage",
+    hard:
+      hardPreview === undefined
+        ? undefined
+        : hardPreview.promotedTo === undefined
+          ? formatReviewInterval({
+              dueAt: hardPreview.card.dueAtMillis,
+              now: ratingNow,
+            })
+          : "next stage",
+    good:
+      goodPreview === undefined
+        ? undefined
+        : goodPreview.promotedTo === undefined
+          ? formatReviewInterval({
+              dueAt: goodPreview.card.dueAtMillis,
+              now: ratingNow,
+            })
+          : "next stage",
+    easy:
+      easyPreview === undefined
+        ? undefined
+        : easyPreview.promotedTo === undefined
+          ? formatReviewInterval({
+              dueAt: easyPreview.card.dueAtMillis,
+              now: ratingNow,
+            })
+          : "next stage",
+  };
   const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
   const displayedPhase = isShowingResult
     ? lastResult.phaseAfter
@@ -228,7 +367,7 @@ function PracticeSession({
         onSubmit={(event) => {
           event.preventDefault();
 
-          if (practiceMode === "typed") {
+          if (practiceMode === "contextRecall") {
             actor.trigger.submit();
           }
         }}
@@ -243,6 +382,12 @@ function PracticeSession({
                 size={34}
                 strokeWidth={2.5}
               />
+              {lastResult.promotedTo === undefined ? null : (
+                <p className="text-sm font-black text-teal">
+                  {StageLabels[lastResult.stage]} mastered ·{" "}
+                  {StageLabels[lastResult.promotedTo]} begins tomorrow
+                </p>
+              )}
               {lastResult.example === undefined ? (
                 <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
                   <WordText text={lastResult.word.text} />
@@ -311,7 +456,7 @@ function PracticeSession({
                 </div>
               )}
             </div>
-          ) : practiceMode === "guided" && answerVisible ? (
+          ) : answerVisible ? (
             <div className="grid w-full gap-3">
               <div className="text-xs font-black uppercase tracking-widest text-teal">
                 Answer
@@ -322,8 +467,53 @@ function PracticeSession({
               <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
                 {currentItem.word.translation}
               </p>
+              <p className="text-base font-black tracking-wide text-gold sm:text-xl">
+                {FuriganaText.toReadingText({ text: currentItem.word.text })}
+              </p>
               {currentItem.word.description === undefined ? null : (
                 <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                  {currentItem.word.description}
+                </p>
+              )}
+              {currentItem.example === undefined ? null : (
+                <div className="mt-2 grid gap-2">
+                  <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
+                    <PracticeExampleSentence
+                      template={currentItem.example.template}
+                      wordText={currentItem.word.text}
+                    />
+                  </p>
+                  <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
+                    <PracticeExampleTranslation
+                      target={currentItem.example.translationTarget}
+                      template={currentItem.example.translationTemplate}
+                    />
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : practiceMode === "recognition" ? (
+            <div className="grid w-full gap-3">
+              <div className="text-xs font-black uppercase tracking-widest text-sky">
+                Recognition
+              </div>
+              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
+                {FuriganaText.toPlainText({ text: currentItem.word.text })}
+              </h1>
+              <p className="text-sm font-semibold text-ink-muted">
+                Recall the reading and meaning
+              </p>
+            </div>
+          ) : practiceMode === "meaningRecall" ? (
+            <div className="grid w-full gap-3">
+              <div className="text-xs font-black uppercase tracking-widest text-gold">
+                Meaning recall
+              </div>
+              <h1 className="w-full wrap-break-word text-2xl font-normal leading-tight sm:text-4xl">
+                {currentItem.word.translation}
+              </h1>
+              {currentItem.word.description === undefined ? null : (
+                <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
                   {currentItem.word.description}
                 </p>
               )}
@@ -412,7 +602,7 @@ function PracticeSession({
             I’ve seen it
             <ArrowRight aria-hidden="true" size={18} strokeWidth={2.5} />
           </Button>
-        ) : practiceMode === "guided" && !answerVisible ? (
+        ) : practiceMode !== "contextRecall" && !answerVisible ? (
           <Button
             type="button"
             autoFocus
@@ -425,17 +615,37 @@ function PracticeSession({
             <Eye aria-hidden="true" size={18} strokeWidth={2.5} />
             Reveal
           </Button>
-        ) : practiceMode === "guided" ? (
-          <div className="mt-10 grid w-full grid-cols-2 gap-3">
+        ) : answerVisible ? (
+          <div className="mt-10 grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
             <Button
               type="button"
               className="inline-flex h-14 items-center justify-center rounded-md border border-berry bg-panel px-4 text-sm font-black text-berry transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-berry disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
-                actor.trigger.rateIncorrect();
+                actor.trigger.rateAgain();
               }}
             >
-              Didn’t know
+              <span className="grid gap-0.5">
+                <span>Again</span>
+                <span className="text-[0.65rem] opacity-75">
+                  {ratingIntervals?.again}
+                </span>
+              </span>
+            </Button>
+            <Button
+              type="button"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-gold bg-panel px-4 text-sm font-black text-gold transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-60"
+              disabled={isSubmitting}
+              onClick={() => {
+                actor.trigger.rateHard();
+              }}
+            >
+              <span className="grid gap-0.5">
+                <span>Hard</span>
+                <span className="text-[0.65rem] opacity-75">
+                  {ratingIntervals?.hard}
+                </span>
+              </span>
             </Button>
             <Button
               type="button"
@@ -443,10 +653,30 @@ function PracticeSession({
               className="inline-flex h-14 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
-                actor.trigger.rateCorrect();
+                actor.trigger.rateGood();
               }}
             >
-              Knew it
+              <span className="grid gap-0.5">
+                <span>Good</span>
+                <span className="text-[0.65rem] opacity-75">
+                  {ratingIntervals?.good}
+                </span>
+              </span>
+            </Button>
+            <Button
+              type="button"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-teal bg-panel px-4 text-sm font-black text-teal transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:opacity-60"
+              disabled={isSubmitting}
+              onClick={() => {
+                actor.trigger.rateEasy();
+              }}
+            >
+              <span className="grid gap-0.5">
+                <span>Easy</span>
+                <span className="text-[0.65rem] opacity-75">
+                  {ratingIntervals?.easy}
+                </span>
+              </span>
             </Button>
           </div>
         ) : (
