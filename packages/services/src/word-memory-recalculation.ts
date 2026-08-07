@@ -56,7 +56,7 @@ export const replayPracticeHistory = ({
       card,
       kind,
       now: event.reviewedAtMillis,
-      result: event.result,
+      rating: event.result === "correct" ? "good" : "again",
     }).card;
   }
 

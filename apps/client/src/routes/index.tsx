@@ -44,6 +44,12 @@ const StatusLabels = {
   scheduled: "Scheduled",
 } as const;
 
+const StageLabels = {
+  recognition: "Recognition",
+  meaningRecall: "Meaning recall",
+  contextRecall: "Context recall",
+} as const;
+
 export const Route = createFileRoute("/")({
   component: WordHistoryRoute,
 });
@@ -185,6 +191,9 @@ function WordHistoryList({
               </span>
               <p className="mt-1 text-xs font-bold text-ink-muted">
                 {summary.attemptCount} attempts · {summary.accuracy}% correct
+              </p>
+              <p className="mt-1 text-xs font-black text-sky">
+                {StageLabels[summary.state.stage]}
               </p>
             </div>
             <div className="text-right">
@@ -358,10 +367,7 @@ function WordHistoryAttemptRow({
 }) {
   const isCorrect = attempt.result === "correct";
   const ResultIcon = isCorrect ? CircleCheck : CircleX;
-  const sourceLabel =
-    attempt.kind === "extra"
-      ? "Extra practice"
-      : `${attempt.source.charAt(0).toLocaleUpperCase()}${attempt.source.slice(1)}`;
+  const sourceLabel = `${StageLabels[attempt.stage]} · ${attempt.rating.charAt(0).toLocaleUpperCase()}${attempt.rating.slice(1)}`;
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-4">

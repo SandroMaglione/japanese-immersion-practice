@@ -228,49 +228,16 @@ export const Default = Layer.effect(
                 DateTime.toEpochMillis(left.dueAt) -
                 DateTime.toEpochMillis(right.dueAt)
             );
-          const earlyLearning = activeStates
-            .filter(
-              (state) =>
-                (state.phase === "learning" || state.phase === "relearning") &&
-                DateTime.toEpochMillis(state.dueAt) > now
-            )
-            .sort(
-              (left, right) =>
-                DateTime.toEpochMillis(left.dueAt) -
-                DateTime.toEpochMillis(right.dueAt)
-            )
-            .slice(0, limit);
-          const futureReview = activeStates
-            .filter(
-              (state) =>
-                state.phase === "review" &&
-                DateTime.toEpochMillis(state.dueAt) > now
-            )
-            .sort(
-              (left, right) =>
-                DateTime.toEpochMillis(left.dueAt) -
-                DateTime.toEpochMillis(right.dueAt)
-            )
-            .slice(0, limit);
-          const oldestPracticedReview = activeStates
-            .filter((state) => state.phase === "review")
-            .sort(
-              (left, right) =>
-                DateTime.toEpochMillis(left.lastPracticedAt) -
-                DateTime.toEpochMillis(right.lastPracticedAt)
-            )
-            .slice(0, limit);
-          const extra = [...futureReview, ...oldestPracticedReview].filter(
-            (state, index, candidates) =>
-              candidates.findIndex(
-                (candidate) => candidate.wordId === state.wordId
-              ) === index
-          );
           const newWords = activeStates
-            .filter((state) => state.phase === "new")
+            .filter(
+              (state) =>
+                state.phase === "new" &&
+                DateTime.toEpochMillis(state.dueAt) <= now
+            )
             .slice(0, limit);
 
           return {
+            activeWordCount: activeStates.length,
             activeLearningCount: activeStates.filter(
               (state) =>
                 state.phase === "learning" || state.phase === "relearning"
@@ -278,8 +245,8 @@ export const Default = Layer.effect(
             dueLearning,
             dueReview: dueReviewStates.slice(0, limit),
             dueReviewCount: dueReviewStates.length,
-            earlyLearning,
-            extra,
+            earlyLearning: [],
+            extra: [],
             newWords,
           };
         }

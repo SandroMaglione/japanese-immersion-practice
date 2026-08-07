@@ -16,7 +16,7 @@ test("a correct new word enters learning", () => {
     card: initialCard({ now }),
     kind: "scheduled",
     now,
-    result: "correct",
+    rating: "good",
   });
 
   assert.equal(transition.card.phase, "learning");
@@ -31,13 +31,13 @@ test("extra correctness preserves the durable schedule", () => {
     card: initial,
     kind: "scheduled",
     now,
-    result: "correct",
+    rating: "good",
   }).card;
   const transition = applyDeterministicPracticeResult({
     card: learning,
     kind: "extra",
     now: now + Minute,
-    result: "correct",
+    rating: "good",
   });
 
   assert.deepEqual(transition.card, learning);
@@ -51,13 +51,13 @@ test("extra failure changes the durable schedule", () => {
     card: initial,
     kind: "scheduled",
     now,
-    result: "correct",
+    rating: "good",
   }).card;
   const transition = applyDeterministicPracticeResult({
     card: learning,
     kind: "extra",
     now: now + Minute,
-    result: "incorrect",
+    rating: "again",
   });
 
   assert.equal(transition.changedSchedule, true);
@@ -72,13 +72,13 @@ test("retrievability falls as review time passes", () => {
     card,
     kind: "scheduled",
     now,
-    result: "correct",
+    rating: "good",
   }).card;
   card = applyDeterministicPracticeResult({
     card,
     kind: "scheduled",
     now: card.dueAtMillis,
-    result: "correct",
+    rating: "good",
   }).card;
 
   const initialRetrievability = retrievability({

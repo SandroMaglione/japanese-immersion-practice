@@ -32,3 +32,19 @@ export function formatDateTime({
 export function formatTime({ dateTime }: { readonly dateTime: DateTime.Utc }) {
   return timeFormatter.format(_dateFromUtc({ dateTime }));
 }
+
+export function formatReviewInterval({
+  dueAt,
+  now,
+}: {
+  readonly dueAt: number;
+  readonly now: number;
+}) {
+  const minutes = Math.max(1, Math.round(Math.max(0, dueAt - now) / 60_000));
+
+  return minutes < 60
+    ? `${minutes}m`
+    : minutes < 1_440
+      ? `${Math.round(minutes / 60)}h`
+      : `${Math.round(minutes / 1_440)}d`;
+}

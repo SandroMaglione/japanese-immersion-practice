@@ -24,6 +24,7 @@ export type WordMemoryCard = {
 
 export type WordMemoryPracticeKind = "scheduled" | "extra";
 export type WordMemoryPracticeResult = "correct" | "incorrect";
+export type WordMemoryPracticeRating = "again" | "hard" | "good" | "easy";
 
 export type WordMemoryTransition = {
   readonly card: WordMemoryCard;
@@ -108,15 +109,15 @@ const _applyPracticeResultWithScheduler = ({
   deterministic,
   kind,
   now,
-  result,
+  rating,
 }: {
   readonly card: WordMemoryCard;
   readonly deterministic: boolean;
   readonly kind: WordMemoryPracticeKind;
   readonly now: number;
-  readonly result: WordMemoryPracticeResult;
+  readonly rating: WordMemoryPracticeRating;
 }): WordMemoryTransition => {
-  if (kind === "extra" && result === "correct") {
+  if (kind === "extra" && rating !== "again") {
     return {
       card,
       changedSchedule: false,
@@ -128,7 +129,13 @@ const _applyPracticeResultWithScheduler = ({
   const next = scheduler.next(
     _toFsrsCard({ card }),
     new Date(now),
-    result === "correct" ? Rating.Good : Rating.Again
+    rating === "again"
+      ? Rating.Again
+      : rating === "hard"
+        ? Rating.Hard
+        : rating === "easy"
+          ? Rating.Easy
+          : Rating.Good
   );
 
   return {
@@ -142,39 +149,72 @@ export const applyPracticeResult = ({
   card,
   kind,
   now,
-  result,
+  rating,
 }: {
   readonly card: WordMemoryCard;
   readonly kind: WordMemoryPracticeKind;
   readonly now: number;
-  readonly result: WordMemoryPracticeResult;
+  readonly rating: WordMemoryPracticeRating;
 }) =>
   _applyPracticeResultWithScheduler({
     card,
     deterministic: false,
     kind,
     now,
-    result,
+    rating,
   });
 
 export const applyDeterministicPracticeResult = ({
   card,
   kind,
   now,
-  result,
+  rating,
 }: {
   readonly card: WordMemoryCard;
   readonly kind: WordMemoryPracticeKind;
   readonly now: number;
-  readonly result: WordMemoryPracticeResult;
+  readonly rating: WordMemoryPracticeRating;
 }) =>
   _applyPracticeResultWithScheduler({
     card,
     deterministic: true,
     kind,
     now,
-    result,
+    rating,
   });
+
+export const previewRatings = ({
+  card,
+  now,
+}: {
+  readonly card: WordMemoryCard;
+  readonly now: number;
+}) => ({
+  again: applyDeterministicPracticeResult({
+    card,
+    kind: "scheduled",
+    now,
+    rating: "again",
+  }).card.dueAtMillis,
+  hard: applyDeterministicPracticeResult({
+    card,
+    kind: "scheduled",
+    now,
+    rating: "hard",
+  }).card.dueAtMillis,
+  good: applyDeterministicPracticeResult({
+    card,
+    kind: "scheduled",
+    now,
+    rating: "good",
+  }).card.dueAtMillis,
+  easy: applyDeterministicPracticeResult({
+    card,
+    kind: "scheduled",
+    now,
+    rating: "easy",
+  }).card.dueAtMillis,
+});
 
 export const retrievability = ({
   card,

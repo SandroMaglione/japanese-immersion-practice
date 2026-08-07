@@ -40,6 +40,10 @@ const _MemoryStateRow = Schema.Struct({
   repetitions: Schema.Number,
   scheduledDays: Schema.Number,
   schedulerVersion: Schema.String,
+  stage: Domain.WordPracticeStage,
+  stageAttemptCount: Schema.Number,
+  stageMasteryStreak: Schema.Number,
+  stageStartedAt: Schema.Number,
   stability: Schema.Number,
   updatedAt: Schema.Number,
   wordId: Schema.String,
@@ -52,14 +56,18 @@ const _PracticeEventRow = Schema.Struct({
   kind: Domain.WordPracticeKind,
   legacyBatchNumber: Schema.NullOr(Schema.Number),
   nextDueAt: Schema.Number,
+  phaseBefore: Domain.WordMemoryPhase,
   phaseAfter: Domain.WordMemoryPhase,
+  promotedTo: Schema.NullOr(Domain.WordPracticeStage),
   previousDueAt: Schema.Number,
   result: Domain.WordPracticeResult,
+  rating: Domain.WordPracticeRating,
   reviewedAt: Schema.Number,
   schedulerVersion: Schema.String,
   sessionId: Schema.String,
   sessionPosition: Schema.Number,
   source: Domain.WordPracticeSource,
+  stage: Domain.WordPracticeStage,
   stabilityAfter: Schema.Number,
   submittedText: Schema.String,
   wordId: Schema.String,
@@ -92,14 +100,19 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at`;
 
 const _memoryStateInsertSql = `INSERT INTO word_memory_states (
-  word_id, phase, due_at, stability, difficulty, elapsed_days, scheduled_days,
+  word_id, stage, stage_started_at, stage_attempt_count, stage_mastery_streak,
+  phase, due_at, stability, difficulty, elapsed_days, scheduled_days,
   learning_steps, repetitions, lapses, attempt_count, correct_count,
   incorrect_count, introduced_at, last_review_at, last_practiced_at,
   scheduler_version, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 const _memoryStateUpsertSql = `${_memoryStateInsertSql}
 ON CONFLICT(word_id) DO UPDATE SET
+  stage = excluded.stage,
+  stage_started_at = excluded.stage_started_at,
+  stage_attempt_count = excluded.stage_attempt_count,
+  stage_mastery_streak = excluded.stage_mastery_streak,
   phase = excluded.phase,
   due_at = excluded.due_at,
   stability = excluded.stability,
@@ -120,11 +133,12 @@ ON CONFLICT(word_id) DO UPDATE SET
   updated_at = excluded.updated_at`;
 
 const _practiceEventInsertSql = `INSERT INTO word_practice_events (
-  id, word_id, submitted_text, reviewed_at, result, kind, source,
-  previous_due_at, next_due_at, changed_schedule, phase_after, stability_after,
+  id, word_id, submitted_text, reviewed_at, result, rating, stage, promoted_to,
+  kind, source, previous_due_at, next_due_at, changed_schedule, phase_before,
+  phase_after, stability_after,
   difficulty_after, scheduler_version, session_id, session_position,
   legacy_batch_number
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 const _toMillis = (dateTime: DateTime.Utc) => DateTime.toEpochMillis(dateTime);
 
@@ -151,6 +165,10 @@ const _wordParameters = Effect.fn("D1Store.wordParameters")(function* (
 const _memoryStateParameters = (state: Domain.WordMemoryState) =>
   [
     state.wordId,
+    state.stage,
+    _toMillis(state.stageStartedAt),
+    state.stageAttemptCount,
+    state.stageMasteryStreak,
     state.phase,
     _toMillis(state.dueAt),
     state.stability,
@@ -230,6 +248,10 @@ const _decodeMemoryStates = (rows: readonly unknown[]) =>
 
       return yield* Schema.decodeEffect(Domain.WordMemoryState)({
         wordId: row.wordId,
+        stage: row.stage,
+        stageStartedAt: row.stageStartedAt,
+        stageAttemptCount: row.stageAttemptCount,
+        stageMasteryStreak: row.stageMasteryStreak,
         phase: row.phase,
         dueAt: row.dueAt,
         stability: row.stability,
@@ -268,11 +290,15 @@ const _decodePracticeEvents = (rows: readonly unknown[]) =>
         submittedText: row.submittedText,
         reviewedAt: row.reviewedAt,
         result: row.result,
+        rating: row.rating,
+        stage: row.stage,
+        ...(row.promotedTo === null ? {} : { promotedTo: row.promotedTo }),
         kind: row.kind,
         source: row.source,
         previousDueAt: row.previousDueAt,
         nextDueAt: row.nextDueAt,
         changedSchedule: row.changedSchedule === 1,
+        phaseBefore: row.phaseBefore,
         phaseAfter: row.phaseAfter,
         stabilityAfter: row.stabilityAfter,
         difficultyAfter: row.difficultyAfter,
@@ -517,38 +543,14 @@ export const makeD1Store = Effect.gen(function* () {
           .sort(
             (left, right) => _toMillis(left.dueAt) - _toMillis(right.dueAt)
           );
-        const earlyLearning = activeStates
-          .filter(
-            (state) =>
-              (state.phase === "learning" || state.phase === "relearning") &&
-              _toMillis(state.dueAt) > now
-          )
-          .sort((left, right) => _toMillis(left.dueAt) - _toMillis(right.dueAt))
-          .slice(0, limit);
-        const futureReview = activeStates
-          .filter(
-            (state) => state.phase === "review" && _toMillis(state.dueAt) > now
-          )
-          .sort((left, right) => _toMillis(left.dueAt) - _toMillis(right.dueAt))
-          .slice(0, limit);
-        const oldestPracticedReview = activeStates
-          .filter((state) => state.phase === "review")
-          .sort(
-            (left, right) =>
-              _toMillis(left.lastPracticedAt) - _toMillis(right.lastPracticedAt)
-          )
-          .slice(0, limit);
-        const extra = [...futureReview, ...oldestPracticedReview].filter(
-          (state, index, candidates) =>
-            candidates.findIndex(
-              (candidate) => candidate.wordId === state.wordId
-            ) === index
-        );
         const newWords = activeStates
-          .filter((state) => state.phase === "new")
+          .filter(
+            (state) => state.phase === "new" && _toMillis(state.dueAt) <= now
+          )
           .slice(0, limit);
 
         return new Store.WordSelectionPool({
+          activeWordCount: activeStates.length,
           activeLearningCount: activeStates.filter(
             (state) =>
               state.phase === "learning" || state.phase === "relearning"
@@ -556,8 +558,8 @@ export const makeD1Store = Effect.gen(function* () {
           dueLearning,
           dueReview: dueReviewStates.slice(0, limit),
           dueReviewCount: dueReviewStates.length,
-          earlyLearning,
-          extra,
+          earlyLearning: [],
+          extra: [],
           newWords,
         });
       }).pipe(_withStoreError("loadWordSelectionPool")),
@@ -578,11 +580,15 @@ export const makeD1Store = Effect.gen(function* () {
               event.submittedText,
               _toMillis(event.reviewedAt),
               event.result,
+              event.rating,
+              event.stage,
+              event.promotedTo ?? null,
               event.kind,
               event.source,
               _toMillis(event.previousDueAt),
               _toMillis(event.nextDueAt),
               event.changedSchedule ? 1 : 0,
+              event.phaseBefore,
               event.phaseAfter,
               event.stabilityAfter,
               event.difficultyAfter,

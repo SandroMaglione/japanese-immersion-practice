@@ -36,6 +36,23 @@ export const WordPracticeResult = Schema.Literals(["correct", "incorrect"]);
 
 export type WordPracticeResult = typeof WordPracticeResult.Type;
 
+export const WordPracticeRating = Schema.Literals([
+  "again",
+  "hard",
+  "good",
+  "easy",
+]);
+
+export type WordPracticeRating = typeof WordPracticeRating.Type;
+
+export const WordPracticeStage = Schema.Literals([
+  "recognition",
+  "meaningRecall",
+  "contextRecall",
+]);
+
+export type WordPracticeStage = typeof WordPracticeStage.Type;
+
 export class WordEntry extends Schema.Class<WordEntry>("WordEntry")({
   text: NonEmptyString,
   translation: NonEmptyString,
@@ -124,6 +141,10 @@ export class WordMemoryState extends Schema.Class<WordMemoryState>(
   "WordMemoryState"
 )({
   wordId: WordId,
+  stage: WordPracticeStage,
+  stageStartedAt: Schema.DateTimeUtcFromMillis,
+  stageAttemptCount: Schema.Number,
+  stageMasteryStreak: Schema.Number,
   phase: WordMemoryPhase,
   dueAt: Schema.DateTimeUtcFromMillis,
   stability: Schema.Number,
@@ -152,11 +173,15 @@ export class WordPracticeEvent extends Schema.Class<WordPracticeEvent>(
   submittedText: Schema.String,
   reviewedAt: Schema.DateTimeUtcFromMillis,
   result: WordPracticeResult,
+  rating: WordPracticeRating,
+  stage: WordPracticeStage,
+  promotedTo: Schema.optional(WordPracticeStage),
   kind: WordPracticeKind,
   source: WordPracticeSource,
   previousDueAt: Schema.DateTimeUtcFromMillis,
   nextDueAt: Schema.DateTimeUtcFromMillis,
   changedSchedule: Schema.Boolean,
+  phaseBefore: WordMemoryPhase,
   phaseAfter: WordMemoryPhase,
   stabilityAfter: Schema.Number,
   difficultyAfter: Schema.Number,

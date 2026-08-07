@@ -467,6 +467,10 @@ const _makeNewRecords = ({
     };
     const state = {
       wordId: id,
+      stage: "recognition",
+      stageStartedAt: now,
+      stageAttemptCount: 0,
+      stageMasteryStreak: 0,
       phase: card.phase,
       dueAt: card.dueAtMillis,
       stability: card.stability,
