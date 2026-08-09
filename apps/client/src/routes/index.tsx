@@ -468,7 +468,7 @@ function RatingTotal({
 }) {
   return (
     <span
-      className={`flex min-w-0 items-center justify-center rounded-md border bg-panel px-1 py-2 text-[0.7rem] sm:text-xs ${isPositive ? "border-sky" : "border-accent"}`}
+      className={`flex min-w-0 items-center justify-center rounded-md border bg-panel px-1 py-2 text-[0.7rem] sm:text-xs ${isPositive ? "border-sky" : "border-accent"} ${total === 0 ? "opacity-40" : ""}`}
     >
       {label} {total}
     </span>
