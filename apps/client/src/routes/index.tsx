@@ -449,11 +449,9 @@ function WordHistoryDetails({
             />
           </div>
         )}
-        <p>
+        <p className="text-center">
           Added {_formatElapsed({ dateTime: summary.word.createdAt, now })} ago
-        </p>
-        <p>
-          Last practiced{" "}
+          · Last practiced{" "}
           {_formatElapsed({ dateTime: summary.state.lastPracticedAt, now })} ago
         </p>
       </div>
