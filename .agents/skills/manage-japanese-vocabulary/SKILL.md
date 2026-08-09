@@ -22,7 +22,9 @@ preserving the app's content conventions and FSRS state invariants.
    - Verify collocations and example patterns. Use a second reliable source
      when a sense or construction is uncommon or ambiguous.
    - Ask only when ambiguity would materially change the requested entry.
-4. Generate a version 2 JSON payload using the reference schemas. Unless the
+4. Generate a version 3 JSON payload using the reference schemas. Every
+   example must include the exact Japanese `answer` inserted at `{{word}}`,
+   including any conjugation required by the sentence. Unless the
    user specifies otherwise, create three varied examples for each new word.
 5. Create a temporary JSON file outside the repository with `apply_patch`.
 6. Validate locally:
@@ -78,7 +80,8 @@ preserving the app's content conventions and FSRS state invariants.
 
 The helper:
 
-- validates payload structure, markers, strings, and domain schemas;
+- validates version 3 payload structure, example answers, markers, strings,
+  and domain schemas;
 - normalizes furigana text with the same service as the app;
 - checks current production words before mutation;
 - initializes new words with the app's current FSRS scheduler;

@@ -53,7 +53,10 @@ register, tone, collocations, and contrast with similar words.
 Default to three examples for a new word. Each example must:
 
 - contain exactly one `{{word}}` marker;
-- accept the canonical word unchanged at that marker;
+- include an `answer` containing the exact Japanese text inserted at that
+  marker, including the complete conjugated form required by the sentence;
+- keep the canonical word only in the parent word's `text` field rather than
+  duplicating it as a separate canonical field in each example;
 - use per-character furigana for other kanji;
 - demonstrate a natural, distinct construction or collocation;
 - include a natural English `translationTemplate` with exactly one
@@ -74,6 +77,13 @@ semantic contribution of the blank:
 }
 ```
 
+The answer also owns any grammar needed inside the blank. For example, a word
+stored as `主[しゅ]張[ちょう]する` can use
+`"answer": "主[しゅ]張[ちょう]している"` in an example. Do not move `している`
+outside the marker and do not add a separate `originalWord` or canonical-word
+field to the example. When no inflection is needed, `answer` may naturally
+equal the parent word's `text`.
+
 Across three examples, prefer coverage such as an adverbial construction, a
 fixed collocation, and an attributive or conversational use. Avoid merely
 changing names or nouns in otherwise identical sentences.
@@ -82,7 +92,7 @@ changing names or nouns in otherwise identical sentences.
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "words": [
     {
       "text": "不[ふ]意[い]",
@@ -90,6 +100,7 @@ changing names or nouns in otherwise identical sentences.
       "description": "予想も準備もしていないときに、突然何かが起こること。",
       "examples": [
         {
+          "answer": "不[ふ]意[い]",
           "template": "{{word}}に名[な]前[まえ]を呼[よ]ばれて、びっくりした。",
           "translationTarget": "suddenly",
           "translationTemplate": "I was startled when someone {{target}} called my name.",
@@ -110,13 +121,14 @@ Use the exact stored word text, including furigana:
 
 ```json
 {
-  "formatVersion": 2,
+  "formatVersion": 3,
   "operation": "addExamples",
   "words": [
     {
       "text": "不[ふ]意[い]",
       "examples": [
         {
+          "answer": "不[ふ]意[い]",
           "template": "背[はい]後[ご]から{{word}}に声[こえ]をかけられた。",
           "translationTarget": "suddenly",
           "translationTemplate": "Someone {{target}} spoke to me from behind.",

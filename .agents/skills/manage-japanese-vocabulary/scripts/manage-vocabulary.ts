@@ -13,6 +13,7 @@ import * as WordMemoryScheduler from "../../../../packages/services/src/word-mem
 type JsonRecord = Record<string, unknown>;
 
 type ExampleInput = {
+  readonly answer: string;
   readonly note?: string;
   readonly template: string;
   readonly translationTarget: string;
@@ -174,7 +175,13 @@ const _example = ({
   const examplePath = `${path}[${index}]`;
   const source = _record({ path: examplePath, value });
   _strictKeys({
-    allowed: ["note", "template", "translationTarget", "translationTemplate"],
+    allowed: [
+      "answer",
+      "note",
+      "template",
+      "translationTarget",
+      "translationTemplate",
+    ],
     path: examplePath,
     value: source,
   });
@@ -188,6 +195,11 @@ const _example = ({
   }
 
   _validateFurigana({ path: `${examplePath}.template`, text: template });
+  const answer = _string({
+    path: `${examplePath}.answer`,
+    value: source.answer,
+  });
+  _validateFurigana({ path: `${examplePath}.answer`, text: answer });
   const translationTemplate = _string({
     path: `${examplePath}.translationTemplate`,
     value: source.translationTemplate,
@@ -210,6 +222,7 @@ const _example = ({
   });
 
   return {
+    answer,
     ...(note === undefined ? {} : { note }),
     template,
     translationTarget: _string({
@@ -254,6 +267,7 @@ const _examplesEqual = ({
 
     return (
       candidate !== undefined &&
+      example.answer === candidate.answer &&
       example.note === candidate.note &&
       example.template === candidate.template &&
       example.translationTarget === candidate.translationTarget &&
@@ -265,8 +279,8 @@ const _parseOperation = (value: unknown): Operation => {
   const root = _record({ path: "payload", value });
   const formatVersion = root.formatVersion;
 
-  if (formatVersion !== 2) {
-    _fail("payload.formatVersion: expected 2");
+  if (formatVersion !== 3) {
+    _fail("payload.formatVersion: expected 3");
   }
 
   const sourceWords = _array({ path: "payload.words", value: root.words });
