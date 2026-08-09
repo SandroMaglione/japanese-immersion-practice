@@ -50,6 +50,7 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       description: "A country",
       examples: [
         {
+          answer: "日[に]本[ほん]",
           template: "{{word}}へ行[い]く。",
           translationTarget: "Japan",
           translationTemplate: "Go to {{target}}.",
@@ -98,6 +99,10 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
 
   assert.equal(result.words.length, 1);
   assert.equal(result.words[0]?.text, word.text);
+  assert.equal(
+    result.words[0]?.examples?.[0]?.answer,
+    word.examples?.[0]?.answer
+  );
   assert.equal(
     result.words[0]?.examples?.[0]?.template,
     word.examples?.[0]?.template
@@ -192,4 +197,5 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
 
   assert.equal(migratedExample?.translationTarget, "Raise funds.");
   assert.equal(migratedExample?.translationTemplate, "{{target}}");
+  assert.equal(migratedExample?.answer, "資[し]金[きん]");
 });

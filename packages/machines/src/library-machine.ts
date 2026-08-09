@@ -135,6 +135,9 @@ const ImportNonEmptyStringSchema = Schema.String.check(
 );
 
 const WordImportJsonExampleSchema = Schema.Struct({
+  answer: ImportNonEmptyStringSchema.annotate({
+    description: `Exact Japanese form inserted at the ${WordPracticePresentation.WordMarker} marker when the answer is revealed. Include the complete conjugated form needed by this example. ${FuriganaNotationDescription}`,
+  }),
   note: Schema.optionalKey(
     Schema.NullOr(
       ImportNonEmptyStringSchema.annotate({
@@ -148,7 +151,7 @@ const WordImportJsonExampleSchema = Schema.Struct({
       message: `Expected exactly one ${WordPracticePresentation.WordMarker} marker.`,
     })
   ).annotate({
-    description: `Japanese example sentence containing exactly one ${WordPracticePresentation.WordMarker} marker where the canonical word should be inserted. The word must fit without conjugation. ${FuriganaNotationDescription}`,
+    description: `Japanese example sentence containing exactly one ${WordPracticePresentation.WordMarker} marker where the example answer should be inserted. ${FuriganaNotationDescription}`,
   }),
   translationTarget: ImportNonEmptyStringSchema.annotate({
     description:
@@ -193,7 +196,7 @@ const WordImportJsonWordSchema = Schema.Struct({
 });
 
 const WordImportJsonSourceSchema = Schema.Struct({
-  formatVersion: Schema.Literal(2),
+  formatVersion: Schema.Literal(3),
   words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
 });
 
@@ -214,13 +217,13 @@ const WordExampleImportJsonWordSchema = Schema.Struct({
 });
 
 const WordExampleImportJsonSourceSchema = Schema.Struct({
-  formatVersion: Schema.Literal(2),
+  formatVersion: Schema.Literal(3),
   operation: Schema.Literal("addExamples"),
   words: Schema.Array(Schema.Unknown).check(Schema.isNonEmpty()),
 });
 
 export const WordImportJsonSchema = Schema.Struct({
-  formatVersion: Schema.Literal(2).annotate({
+  formatVersion: Schema.Literal(3).annotate({
     description: "Version of the word import format.",
   }),
   words: Schema.Array(WordImportJsonWordSchema)
@@ -249,19 +252,21 @@ export const WordImportJsonSchemaDefinitionText = Formatter.formatJson(
 
 export const WordImportJsonExample = Formatter.formatJson(
   {
-    formatVersion: 2,
+    formatVersion: 3,
     words: [
       {
         description:
           "事業や活動など、特定の目的のために用意するお金。日常的なお金より改まった響きがあり、運営や投資の元手という感じがある。",
         examples: [
           {
+            answer: "資[し]金[きん]",
             note: "「資金を集める」は、活動に必要なお金を用意するときの自然な組み合わせ。",
             template: `新しい事業の${WordPracticePresentation.WordMarker}を集める。`,
             translationTarget: "funds",
             translationTemplate: `Raise ${WordPracticePresentation.TranslationTargetMarker} for a new business.`,
           },
           {
+            answer: "資[し]金[きん]",
             note: "「資金を調達する」は、ビジネスや公的な場面でよく使う。",
             template: `銀行から${WordPracticePresentation.WordMarker}を調達した。`,
             translationTarget: "financing",
@@ -276,11 +281,13 @@ export const WordImportJsonExample = Formatter.formatJson(
           "予定していない相手と偶然出くわすこと。単なる遭遇より突然の感じが強く、会話でも自然に使える。",
         examples: [
           {
+            answer: "ばったり会[あ]う",
             template: `駅で昔の友達と${WordPracticePresentation.WordMarker}なんて思わなかった。`,
             translationTarget: "unexpectedly run into",
             translationTemplate: `I never thought I would ${WordPracticePresentation.TranslationTargetMarker} an old friend at the station.`,
           },
           {
+            answer: "ばったり会[あ]う",
             note: "約束して会う場合には使わない。",
             template: `旅行先で先生に${WordPracticePresentation.WordMarker}こともある。`,
             translationTarget: "unexpectedly run into",
@@ -298,7 +305,7 @@ export const WordImportJsonExample = Formatter.formatJson(
 );
 
 export const WordExampleImportJsonSchema = Schema.Struct({
-  formatVersion: Schema.Literal(2).annotate({
+  formatVersion: Schema.Literal(3).annotate({
     description: "Version of the example enrichment format.",
   }),
   operation: Schema.Literal("addExamples").annotate({
@@ -333,18 +340,20 @@ export const WordExampleImportJsonSchemaDefinitionText = Formatter.formatJson(
 
 export const WordExampleImportJsonExample = Formatter.formatJson(
   {
-    formatVersion: 2,
+    formatVersion: 3,
     operation: "addExamples",
     words: [
       {
         examples: [
           {
+            answer: "資[し]金[きん]",
             note: "「資金を提供する」は、事業や計画に必要なお金を出すときの自然な組み合わせ。",
             template: `政府は新しい計画に${WordPracticePresentation.WordMarker}を提供した。`,
             translationTarget: "funding",
             translationTemplate: `The government provided ${WordPracticePresentation.TranslationTargetMarker} for the new plan.`,
           },
           {
+            answer: "資[し]金[きん]",
             template: `十分な${WordPracticePresentation.WordMarker}が集まらず、計画は延期された。`,
             translationTarget: "funding",
             translationTemplate: `The plan was postponed because sufficient ${WordPracticePresentation.TranslationTargetMarker} could not be raised.`,
@@ -822,6 +831,7 @@ export const makeLibraryMachine = ({
 
                 const examples = decodedWord.success.examples.map(
                   (example) => ({
+                    answer: example.answer,
                     ...(example.note === null || example.note === undefined
                       ? {}
                       : { note: example.note }),
@@ -1010,6 +1020,7 @@ export const makeLibraryMachine = ({
                   decodedWord.success.description?.trim() ?? "";
                 const examples = decodedWord.success.examples?.map(
                   (example) => ({
+                    answer: example.answer,
                     ...(example.note === null || example.note === undefined
                       ? {}
                       : { note: example.note }),

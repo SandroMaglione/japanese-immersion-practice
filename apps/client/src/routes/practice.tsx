@@ -132,11 +132,13 @@ function PracticeRoute() {
 }
 
 function PracticeExampleSentence({
+  answer,
   template,
-  wordText,
+  revealed,
 }: {
+  readonly answer: string;
   readonly template: string;
-  readonly wordText?: string;
+  readonly revealed: boolean;
 }) {
   const markerIndex = template.indexOf(WordPracticePresentation.WordMarker);
   const before = template.slice(0, markerIndex);
@@ -147,7 +149,7 @@ function PracticeExampleSentence({
   return (
     <>
       <WordText text={before} />
-      {wordText === undefined ? (
+      {!revealed ? (
         <span
           aria-label="Missing word"
           className="mx-1 inline-block min-w-16 border-b-2 border-current align-baseline"
@@ -156,7 +158,7 @@ function PracticeExampleSentence({
         </span>
       ) : (
         <span className="font-black text-sky">
-          <WordText text={wordText} />
+          <WordText text={answer} />
         </span>
       )}
       <WordText text={after} />
@@ -395,8 +397,9 @@ function PracticeSession({
               ) : (
                 <h1 className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
                   <PracticeExampleSentence
+                    answer={lastResult.example.answer}
                     template={lastResult.example.template}
-                    wordText={lastResult.word.text}
+                    revealed
                   />
                 </h1>
               )}
@@ -443,8 +446,9 @@ function PracticeSession({
                 <div className="mt-2 grid gap-2">
                   <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
                     <PracticeExampleSentence
+                      answer={currentItem.example.answer}
                       template={currentItem.example.template}
-                      wordText={currentItem.word.text}
+                      revealed
                     />
                   </p>
                   <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
@@ -479,8 +483,9 @@ function PracticeSession({
                 <div className="mt-2 grid gap-2">
                   <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
                     <PracticeExampleSentence
+                      answer={currentItem.example.answer}
                       template={currentItem.example.template}
-                      wordText={currentItem.word.text}
+                      revealed
                     />
                   </p>
                   <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
@@ -542,7 +547,9 @@ function PracticeSession({
                 <>
                   <h1 className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
                     <PracticeExampleSentence
+                      answer={currentItem.example.answer}
                       template={currentItem.example.template}
+                      revealed={false}
                     />
                   </h1>
                   <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">

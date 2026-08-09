@@ -13,19 +13,20 @@ test("example enrichment accepts strict versioned entries", async () => {
   const decoded = await Effect.runPromise(
     decodeExampleImport(
       {
-        formatVersion: 2,
+        formatVersion: 3,
         operation: "addExamples",
         words: [
           {
             examples: [
               {
+                answer: "嘆[なげ]いた",
                 note: "A useful collocation.",
-                template: "{{word}}を集める。",
-                translationTarget: "funds",
-                translationTemplate: "Raise {{target}}.",
+                template: "結果を{{word}}。",
+                translationTarget: "lamented",
+                translationTemplate: "They {{target}} the result.",
               },
             ],
-            text: "資[し]金[きん]",
+            text: "嘆[なげ]く",
           },
         ],
       },
@@ -36,7 +37,8 @@ test("example enrichment accepts strict versioned entries", async () => {
     )
   );
 
-  assert.equal(decoded.words[0]?.text, "資[し]金[きん]");
+  assert.equal(decoded.words[0]?.text, "嘆[なげ]く");
+  assert.equal(decoded.words[0]?.examples[0]?.answer, "嘆[なげ]いた");
 });
 
 test("example enrichment rejects malformed examples", async () => {
@@ -44,12 +46,13 @@ test("example enrichment rejects malformed examples", async () => {
     Effect.runPromise(
       decodeExampleImport(
         {
-          formatVersion: 2,
+          formatVersion: 3,
           operation: "addExamples",
           words: [
             {
               examples: [
                 {
+                  answer: "資[し]金[きん]",
                   template: "資金を集める。",
                   translationTarget: "funds",
                   translationTemplate: "Raise {{target}}.",
@@ -71,12 +74,13 @@ test("example enrichment rejects malformed examples", async () => {
 
 test("example enrichment rejects unknown properties", async () => {
   const payload: unknown = {
-    formatVersion: 2,
+    formatVersion: 3,
     operation: "addExamples",
     words: [
       {
         examples: [
           {
+            answer: "資[し]金[きん]",
             template: "{{word}}を集める。",
             translationTarget: "funds",
             translationTemplate: "Raise {{target}}.",
@@ -104,12 +108,13 @@ test("example enrichment rejects translation templates without a target marker",
     Effect.runPromise(
       decodeExampleImport(
         {
-          formatVersion: 2,
+          formatVersion: 3,
           operation: "addExamples",
           words: [
             {
               examples: [
                 {
+                  answer: "資[し]金[きん]",
                   template: "{{word}}を集める。",
                   translationTarget: "funds",
                   translationTemplate: "Raise funds.",

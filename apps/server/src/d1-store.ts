@@ -83,6 +83,13 @@ const _LegacyWordPracticeExample = Schema.Struct({
   translation: Domain.NonEmptyString,
 });
 
+const _PreviousWordPracticeExample = Schema.Struct({
+  note: Schema.optional(Domain.NonEmptyString),
+  template: Domain.NonEmptyString,
+  translationTarget: Domain.NonEmptyString,
+  translationTemplate: Domain.NonEmptyString,
+});
+
 const _StoredExamplesJson = Schema.fromJsonString(Schema.Array(Schema.Unknown));
 
 const _wordInsertSql = `INSERT INTO words (
@@ -212,11 +219,25 @@ const _decodeWords = (rows: readonly unknown[]) =>
                   return currentExample.success;
                 }
 
+                const previousExample = Schema.decodeUnknownResult(
+                  _PreviousWordPracticeExample
+                )(input);
+
+                if (Result.isSuccess(previousExample)) {
+                  return yield* Schema.decodeEffect(Domain.WordPracticeExample)(
+                    {
+                      ...previousExample.success,
+                      answer: row.text,
+                    }
+                  );
+                }
+
                 const legacyExample = yield* Schema.decodeUnknownEffect(
                   _LegacyWordPracticeExample
                 )(input);
 
                 return yield* Schema.decodeEffect(Domain.WordPracticeExample)({
+                  answer: row.text,
                   ...(legacyExample.note === undefined
                     ? {}
                     : { note: legacyExample.note }),

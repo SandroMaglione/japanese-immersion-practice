@@ -120,6 +120,7 @@ export type WordPracticeSource = typeof WordPracticeSource.Type;
 export class WordPracticeExample extends Schema.Class<WordPracticeExample>(
   "WordPracticeExample"
 )({
+  answer: NonEmptyString,
   template: NonEmptyString,
   translationTarget: NonEmptyString,
   translationTemplate: NonEmptyString,
