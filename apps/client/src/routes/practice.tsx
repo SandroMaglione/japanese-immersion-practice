@@ -579,7 +579,7 @@ function PracticeSession({
                   type="button"
                   aria-label="Next"
                   autoFocus
-                  className="inline-flex h-14 w-14 items-center justify-center self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+                  className="mt-auto inline-flex h-14 w-14 items-center justify-center self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
                   onClick={() => {
                     actor.trigger.submit();
                   }}
@@ -600,7 +600,7 @@ function PracticeSession({
           <Button
             type="button"
             autoFocus
-            className="mt-10 inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+            className="mt-auto inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
             disabled={isSubmitting}
             onClick={() => {
               actor.trigger.introduce();
@@ -613,7 +613,7 @@ function PracticeSession({
           <Button
             type="button"
             autoFocus
-            className="mt-10 inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+            className="mt-auto inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
             disabled={isSubmitting}
             onClick={() => {
               actor.trigger.reveal();
@@ -623,7 +623,7 @@ function PracticeSession({
             Reveal
           </Button>
         ) : answerVisible ? (
-          <div className="mt-10 grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="mt-auto grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
             <Button
               type="button"
               className="inline-flex h-14 items-center justify-center rounded-md border border-rating-again bg-panel px-4 text-sm font-black text-rating-again transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-again disabled:opacity-60"
@@ -687,7 +687,7 @@ function PracticeSession({
             </Button>
           </div>
         ) : (
-          <div className="mt-10 flex w-full min-w-0 gap-2">
+          <div className="mt-auto flex w-full min-w-0 gap-2">
             {currentItem?.example === undefined ||
             currentItem.word.description === undefined ||
             hintVisible ? null : (
