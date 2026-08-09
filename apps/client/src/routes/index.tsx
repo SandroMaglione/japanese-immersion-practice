@@ -431,7 +431,7 @@ function WordHistoryDetails({
             <RatingTotal isPositive label="Easy" total={ratingCounts.easy} />
           </div>
         )}
-        <p className="text-center">
+        <p className="mt-2 text-center">
           Added {_formatElapsed({ dateTime: summary.word.createdAt, now })} ago
           · Last practiced{" "}
           {_formatElapsed({ dateTime: summary.state.lastPracticedAt, now })} ago
