@@ -483,7 +483,7 @@ function WordHistoryAttemptRow({
   const isPositiveRating =
     attempt.rating === "good" || attempt.rating === "easy";
   const ResultIcon = isPositiveRating ? CircleCheck : CircleX;
-  const sourceLabel = `${StageLabels[attempt.stage]} · ${attempt.rating.charAt(0).toLocaleUpperCase()}${attempt.rating.slice(1)}`;
+  const ratingLabel = `${attempt.rating.charAt(0).toLocaleUpperCase()}${attempt.rating.slice(1)}`;
 
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-4">
@@ -497,13 +497,10 @@ function WordHistoryAttemptRow({
         strokeWidth={2.5}
       />
       <div className="min-w-0">
-        <p className="wrap-break-word whitespace-pre-wrap text-base font-black leading-7">
-          {attempt.submittedText.trim() === ""
-            ? "Blank answer"
-            : attempt.submittedText}
-        </p>
+        <p className="text-base font-black leading-7">{ratingLabel}</p>
         <p className="mt-1 text-xs font-bold text-ink-muted">
-          {sourceLabel} · {formatDateTime({ dateTime: attempt.reviewedAt })}
+          {StageLabels[attempt.stage]} ·{" "}
+          {formatDateTime({ dateTime: attempt.reviewedAt })}
         </p>
       </div>
     </div>
