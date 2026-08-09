@@ -410,22 +410,47 @@ function WordHistoryDetails({
 
   return (
     <div className="grid gap-4">
-      <Dialog.Description className="wrap-break-word text-sm font-bold leading-6 text-ink-muted">
-        {summary.word.translation}
-      </Dialog.Description>
-      {summary.word.description === undefined ? null : (
-        <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
-          {summary.word.description}
-        </p>
-      )}
+      <div className="grid gap-2 border-b border-line pb-4">
+        <Dialog.Description className="wrap-break-word text-sm font-bold leading-6 text-ink-muted">
+          {summary.word.translation}
+        </Dialog.Description>
+        {summary.word.description === undefined ? null : (
+          <p className="wrap-break-word text-sm font-semibold leading-6 text-ink-muted">
+            {summary.word.description}
+          </p>
+        )}
+      </div>
       <div className="grid gap-1 text-xs font-bold text-ink-muted">
+        {isLoading ? (
+          <p className="text-sm font-black text-ink">Ratings loading…</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-black text-ink">
+            <RatingTotal
+              icon={CircleX}
+              label="Again"
+              total={ratingCounts.again}
+            />
+            <RatingTotal
+              icon={CircleX}
+              label="Hard"
+              total={ratingCounts.hard}
+            />
+            <RatingTotal
+              icon={CircleCheck}
+              isPositive
+              label="Good"
+              total={ratingCounts.good}
+            />
+            <RatingTotal
+              icon={CircleCheck}
+              isPositive
+              label="Easy"
+              total={ratingCounts.easy}
+            />
+          </div>
+        )}
         <p>
           Added {_formatElapsed({ dateTime: summary.word.createdAt, now })} ago
-        </p>
-        <p className="whitespace-nowrap">
-          {isLoading
-            ? "Ratings loading…"
-            : `Again ${ratingCounts.again} · Hard ${ratingCounts.hard} · Good ${ratingCounts.good} · Easy ${ratingCounts.easy}`}
         </p>
         <p>
           Last practiced{" "}
@@ -449,6 +474,30 @@ function WordHistoryDetails({
         </div>
       )}
     </div>
+  );
+}
+
+function RatingTotal({
+  icon: Icon,
+  isPositive = false,
+  label,
+  total,
+}: {
+  readonly icon: typeof CircleCheck;
+  readonly isPositive?: boolean;
+  readonly label: string;
+  readonly total: number;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Icon
+        aria-hidden="true"
+        className={isPositive ? "text-teal" : "text-accent"}
+        size={16}
+        strokeWidth={2.5}
+      />
+      {label} {total}
+    </span>
   );
 }
 
