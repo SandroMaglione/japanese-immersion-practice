@@ -252,13 +252,13 @@ function WordMemoryRow({
       </div>
       <div className="grid min-w-0 justify-items-end gap-1 justify-self-end text-right">
         <p className="whitespace-nowrap text-sm font-normal text-ink">
-          {retention}% recall
-        </p>
-        <p className="max-w-[48vw] wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:max-w-72">
           {word.isDue ? "Due now" : `Review in ${reviewInterval}`}
         </p>
         <p className="text-xs font-normal leading-5 text-ink-muted">
           {stability}
+        </p>
+        <p className="text-xs font-normal leading-5 text-ink-muted">
+          {retention}% recall
         </p>
       </div>
     </article>
