@@ -424,7 +424,7 @@ function WordHistoryDetails({
         {isLoading ? (
           <p className="text-sm font-black text-ink">Ratings loading…</p>
         ) : (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-black text-ink">
+          <div className="grid grid-cols-4 gap-1.5 font-black text-ink">
             <RatingTotal
               icon={CircleX}
               label="Again"
@@ -489,7 +489,7 @@ function RatingTotal({
   readonly total: number;
 }) {
   return (
-    <span className="inline-flex items-center gap-1">
+    <span className="flex min-w-0 items-center justify-center gap-1 rounded-md border border-line bg-panel px-1 py-2 text-[0.7rem] sm:text-xs">
       <Icon
         aria-hidden="true"
         className={isPositive ? "text-teal" : "text-accent"}
