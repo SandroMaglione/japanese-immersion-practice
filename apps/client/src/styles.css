@@ -62,15 +62,3 @@
     color: var(--color-ink);
   }
 }
-
-@layer components {
-  @media (max-width: 639px) {
-    .memory-status-tabs {
-      scrollbar-width: none;
-    }
-
-    .memory-status-tabs::-webkit-scrollbar {
-      display: none;
-    }
-  }
-}

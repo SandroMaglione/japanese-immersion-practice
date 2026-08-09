@@ -3,20 +3,13 @@ import { Tabs } from "@base-ui/react/tabs";
 import { WordMemoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
-import { Array as EffectArray } from "effect";
-import {
-  AlarmClock,
-  CalendarClock,
-  RefreshCw,
-  RotateCcw,
-  Sparkles,
-  Sprout,
-} from "lucide-react";
+import { Array as EffectArray, DateTime } from "effect";
+import { AlarmClock, CalendarClock, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
-import { formatDateTime } from "../lib/format.ts";
+import { formatDateTime, formatReviewInterval } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const wordMemoryMachine = WordMemoryMachine.makeWordMemoryMachine({
@@ -30,10 +23,7 @@ type WordMemoryGroup = ReturnType<
 
 const StatusLabels = {
   due: "Due",
-  learning: "Learning",
-  new: "New",
-  relearning: "Relearning",
-  scheduled: "Scheduled",
+  later: "Later",
 } as const;
 
 const StageLabels = {
@@ -47,19 +37,7 @@ const StatusPresentation = {
     activeClassName: "border-gold/55 bg-gold-soft text-gold",
     Icon: AlarmClock,
   },
-  learning: {
-    activeClassName: "border-teal/50 bg-teal-soft text-teal",
-    Icon: Sprout,
-  },
-  new: {
-    activeClassName: "border-sky/45 bg-sky/10 text-sky",
-    Icon: Sparkles,
-  },
-  relearning: {
-    activeClassName: "border-accent/50 bg-accent-soft text-accent",
-    Icon: RotateCcw,
-  },
-  scheduled: {
+  later: {
     activeClassName: "border-line bg-field text-ink",
     Icon: CalendarClock,
   },
@@ -128,8 +106,8 @@ function WordMemoryTabs({ actor }: { readonly actor: WordMemoryActor }) {
       }}
     >
       <Tabs.List
-        aria-label="Word memory status"
-        className="memory-status-tabs flex w-full min-w-0 snap-x snap-mandatory scroll-px-1 gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-5"
+        aria-label="Review availability"
+        className="grid w-full min-w-0 grid-cols-2 gap-2"
       >
         {groups.map((group) => {
           const presentation = StatusPresentation[group.status];
@@ -253,6 +231,10 @@ function WordMemoryRow({
   readonly word: WordMemoryGroup["words"][number];
 }) {
   const reviewDate = formatDateTime({ dateTime: word.state.dueAt });
+  const reviewInterval = formatReviewInterval({
+    dueAt: DateTime.toEpochMillis(word.state.dueAt),
+    now: Date.now(),
+  });
   const retention = Math.round(word.retrievability * 100);
   const stability =
     word.state.stability < 1
@@ -274,6 +256,7 @@ function WordMemoryRow({
           {retention}% recall
         </p>
         <p className="max-w-[48vw] wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:max-w-72">
+          {word.isDue ? "Due now" : `Review in ${reviewInterval}`} ·{" "}
           {reviewDate}
         </p>
         <p className="text-xs font-normal leading-5 text-ink-muted">

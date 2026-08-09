@@ -5,13 +5,7 @@ import { createAsyncLogic, setup } from "xstate";
 
 import type { MachineRuntime } from "./runtime.ts";
 
-const WordMemoryStatusSchema = Schema.Literals([
-  "new",
-  "learning",
-  "relearning",
-  "due",
-  "scheduled",
-]);
+const WordMemoryStatusSchema = Schema.Literals(["due", "later"]);
 
 const WordMemoryOverviewWordSchema = Schema.Struct({
   isDue: Schema.Boolean,
@@ -52,13 +46,7 @@ const WordMemoryDataSchema = Schema.Struct({
   groups: Schema.Array(WordMemoryGroupSchema),
 });
 
-const MemoryStatuses = [
-  "new",
-  "learning",
-  "relearning",
-  "due",
-  "scheduled",
-] as const;
+const MemoryStatuses = ["due", "later"] as const;
 
 const MillisecondsPerDay = 86_400_000;
 
@@ -290,7 +278,7 @@ export const makeWordMemoryMachine = ({
                   scheduledDays: state.scheduledDays,
                   stability: state.stability,
                 };
-                const isDue = WordMemoryScheduler.isDue({ card, now });
+                const isDue = DateTime.toEpochMillis(state.dueAt) <= now;
 
                 return [
                   {
@@ -300,14 +288,7 @@ export const makeWordMemoryMachine = ({
                       now,
                     }),
                     state,
-                    status:
-                      state.phase === "new" ||
-                      state.phase === "learning" ||
-                      state.phase === "relearning"
-                        ? state.phase
-                        : isDue
-                          ? "due"
-                          : "scheduled",
+                    status: isDue ? "due" : "later",
                     word,
                   },
                 ];

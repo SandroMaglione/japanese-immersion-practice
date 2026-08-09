@@ -20,7 +20,7 @@ export type WordPracticeStageTransition = {
   readonly stageStartedAtMillis: number;
 };
 
-export const MinimumPromotionIntervalMillis = 7 * 86_400_000;
+export const MinimumPromotionIntervalMillis = 3 * 86_400_000;
 export const RequiredMasteryReviews = 2;
 export const PromotionDelayMillis = 86_400_000;
 

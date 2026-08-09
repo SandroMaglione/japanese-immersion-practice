@@ -40,11 +40,15 @@ export function formatReviewInterval({
   readonly dueAt: number;
   readonly now: number;
 }) {
-  const minutes = Math.max(1, Math.round(Math.max(0, dueAt - now) / 60_000));
+  const remainingMillis = Math.max(0, dueAt - now);
+  const seconds = Math.max(1, Math.round(remainingMillis / 1_000));
+  const minutes = Math.max(1, Math.round(remainingMillis / 60_000));
 
-  return minutes < 60
-    ? `${minutes}m`
-    : minutes < 1_440
-      ? `${Math.round(minutes / 60)}h`
-      : `${Math.round(minutes / 1_440)}d`;
+  return remainingMillis < 60_000
+    ? `${seconds}s`
+    : remainingMillis < 3_600_000
+      ? `${minutes}m`
+      : remainingMillis < 86_400_000
+        ? `${Math.round(remainingMillis / 3_600_000)}h`
+        : `${Math.round(remainingMillis / 86_400_000)}d`;
 }

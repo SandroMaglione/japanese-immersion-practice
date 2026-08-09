@@ -42,6 +42,17 @@ test("a second delayed mastery review promotes recognition", () => {
   assert.equal(result.stageAttemptCount, 0);
 });
 
+test("a mastery review before the three-day boundary does not promote", () => {
+  const result = transitionAfterRating({
+    ..._input(),
+    lastReviewAtMillis: now - MinimumPromotionIntervalMillis + 1,
+  });
+
+  assert.equal(result.promotedTo, undefined);
+  assert.equal(result.stage, "recognition");
+  assert.equal(result.stageMasteryStreak, 2);
+});
+
 test("hard and again reset mastery without promotion", () => {
   for (const rating of ["hard", "again"] as const) {
     const result = transitionAfterRating(_input({ rating }));
