@@ -425,28 +425,10 @@ function WordHistoryDetails({
           <p className="text-sm font-black text-ink">Ratings loading…</p>
         ) : (
           <div className="grid grid-cols-4 gap-1.5 font-black text-ink">
-            <RatingTotal
-              icon={CircleX}
-              label="Again"
-              total={ratingCounts.again}
-            />
-            <RatingTotal
-              icon={CircleX}
-              label="Hard"
-              total={ratingCounts.hard}
-            />
-            <RatingTotal
-              icon={CircleCheck}
-              isPositive
-              label="Good"
-              total={ratingCounts.good}
-            />
-            <RatingTotal
-              icon={CircleCheck}
-              isPositive
-              label="Easy"
-              total={ratingCounts.easy}
-            />
+            <RatingTotal label="Again" total={ratingCounts.again} />
+            <RatingTotal label="Hard" total={ratingCounts.hard} />
+            <RatingTotal isPositive label="Good" total={ratingCounts.good} />
+            <RatingTotal isPositive label="Easy" total={ratingCounts.easy} />
           </div>
         )}
         <p className="text-center">
@@ -476,24 +458,18 @@ function WordHistoryDetails({
 }
 
 function RatingTotal({
-  icon: Icon,
   isPositive = false,
   label,
   total,
 }: {
-  readonly icon: typeof CircleCheck;
   readonly isPositive?: boolean;
   readonly label: string;
   readonly total: number;
 }) {
   return (
-    <span className="flex min-w-0 items-center justify-center gap-1 rounded-md border border-line bg-panel px-1 py-2 text-[0.7rem] sm:text-xs">
-      <Icon
-        aria-hidden="true"
-        className={isPositive ? "text-teal" : "text-accent"}
-        size={16}
-        strokeWidth={2.5}
-      />
+    <span
+      className={`flex min-w-0 items-center justify-center rounded-md border bg-panel px-1 py-2 text-[0.7rem] sm:text-xs ${isPositive ? "border-sky" : "border-accent"}`}
+    >
       {label} {total}
     </span>
   );
