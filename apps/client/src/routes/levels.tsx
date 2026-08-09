@@ -9,7 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
-import { formatDateTime, formatReviewInterval } from "../lib/format.ts";
+import { formatReviewInterval } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const wordMemoryMachine = WordMemoryMachine.makeWordMemoryMachine({
@@ -230,7 +230,6 @@ function WordMemoryRow({
 }: {
   readonly word: WordMemoryGroup["words"][number];
 }) {
-  const reviewDate = formatDateTime({ dateTime: word.state.dueAt });
   const reviewInterval = formatReviewInterval({
     dueAt: DateTime.toEpochMillis(word.state.dueAt),
     now: Date.now(),
@@ -256,8 +255,7 @@ function WordMemoryRow({
           {retention}% recall
         </p>
         <p className="max-w-[48vw] wrap-break-word text-xs font-normal leading-5 text-ink-muted sm:max-w-72">
-          {word.isDue ? "Due now" : `Review in ${reviewInterval}`} ·{" "}
-          {reviewDate}
+          {word.isDue ? "Due now" : `Review in ${reviewInterval}`}
         </p>
         <p className="text-xs font-normal leading-5 text-ink-muted">
           {stability}
