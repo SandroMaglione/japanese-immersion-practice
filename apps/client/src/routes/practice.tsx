@@ -1,3 +1,4 @@
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Button } from "@base-ui/react/button";
 import { Input } from "@base-ui/react/input";
 import { Tooltip } from "@base-ui/react/tooltip";
@@ -12,11 +13,10 @@ import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import { DateTime } from "effect";
 import {
-  ArrowRight,
+  ArrowLeft,
   Check,
   CircleCheck,
   CircleX,
-  Eye,
   Lightbulb,
   LoaderCircle,
   RefreshCw,
@@ -24,7 +24,7 @@ import {
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
-import { formatDateTime, formatReviewInterval } from "../lib/format.ts";
+import { formatReviewInterval } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const practiceOverviewMachine =
@@ -49,9 +49,7 @@ function PracticeRoute() {
   const isFailure = snapshot.value === "Failure";
   const isLoading = snapshot.value === "Loading";
   const isRevealed = snapshot.value === "Revealed";
-  const isSubmitting =
-    snapshot.value === "Submitting" ||
-    snapshot.value === "RecordingIntroduction";
+  const isSubmitting = snapshot.value === "Submitting";
 
   if (isLoading) {
     return (
@@ -100,24 +98,33 @@ function PracticeRoute() {
 
   if (isComplete) {
     return (
-      <section className="flex min-w-0 flex-col items-center justify-center gap-4 py-14 text-center sm:min-h-[calc(100svh-12rem)] sm:py-6">
-        <CircleCheck className="text-teal" size={42} strokeWidth={2.5} />
-        <div>
-          <div className="text-xl font-black">Scheduled work complete</div>
-          <div className="mt-1 text-sm font-semibold text-ink-muted">
-            No reviews or new stages are due right now.
+      <section className="flex h-[calc(100svh-1.5rem-max(1rem,env(safe-area-inset-bottom)))] min-w-0 flex-col items-center gap-4 text-center sm:h-[calc(100svh-2.5rem-max(1.5rem,env(safe-area-inset-bottom)))]">
+        <div className="flex flex-1 flex-col items-center justify-center gap-4">
+          <CircleCheck className="text-teal" size={42} strokeWidth={2.5} />
+          <div>
+            <div className="text-xl font-black">Scheduled work complete</div>
+            <div className="mt-1 text-sm font-semibold text-ink-muted">
+              No reviews or new stages are due right now.
+            </div>
           </div>
         </div>
-        <Button
-          type="button"
-          className="inline-flex h-10 items-center gap-2 rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:text-ink"
-          onClick={() => {
-            actor.trigger.refresh();
-          }}
-        >
-          <RefreshCw size={16} strokeWidth={2.5} />
-          Check again
-        </Button>
+        <div className="grid w-full shrink-0 gap-2">
+          <Button
+            type="button"
+            className="inline-flex h-14 w-full items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+            onClick={() => {
+              actor.trigger.refresh();
+            }}
+          >
+            Check again
+          </Button>
+          <Link
+            to="/"
+            className="inline-flex h-14 w-full items-center justify-center rounded-md border border-line bg-panel px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+          >
+            Back
+          </Link>
+        </div>
       </section>
     );
   }
@@ -190,6 +197,57 @@ function PracticeExampleTranslation({
   );
 }
 
+function ConfirmRatingButton({
+  buttonClassName,
+  description,
+  disabled,
+  interval,
+  label,
+  onConfirm,
+}: {
+  readonly buttonClassName: string;
+  readonly description: string;
+  readonly disabled: boolean;
+  readonly interval: string | undefined;
+  readonly label: "Again" | "Easy";
+  readonly onConfirm: () => void;
+}) {
+  return (
+    <AlertDialog.Root>
+      <AlertDialog.Trigger className={buttonClassName} disabled={disabled}>
+        <span className="grid gap-0.5">
+          <span>{label}</span>
+          <span className="text-[0.65rem] opacity-75">{interval}</span>
+        </span>
+      </AlertDialog.Trigger>
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-paper/70 backdrop-blur-sm" />
+        <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 grid w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-md border border-line bg-panel p-5 text-left text-ink shadow-[0_24px_80px_rgba(0,0,0,0.45)] focus:outline-none">
+          <div className="grid gap-2">
+            <AlertDialog.Title className="text-lg font-black">
+              Rate this word {label}?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="text-sm font-semibold leading-6 text-ink-muted">
+              {description}
+            </AlertDialog.Description>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <AlertDialog.Close className="h-10 rounded-md px-4 text-sm font-black text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky">
+              Cancel
+            </AlertDialog.Close>
+            <AlertDialog.Close
+              className="inline-flex h-10 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+              onClick={onConfirm}
+            >
+              Confirm {label}
+            </AlertDialog.Close>
+          </div>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
 function PracticeSession({
   actor,
   isRevealed,
@@ -220,14 +278,9 @@ function PracticeSession({
     (snapshot) => snapshot.context.answerVisible
   );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
-  const stats = useSelector(actor, (snapshot) => snapshot.context.stats);
   const isShowingResult = isRevealed && lastResult !== undefined;
   const practiceMode =
-    currentItem === undefined
-      ? undefined
-      : currentItem.state.introducedAt === undefined
-        ? "introduction"
-        : currentItem.state.stage;
+    currentItem === undefined ? undefined : currentItem.state.stage;
   const ratingNow = Date.now();
   const ratingCard: WordMemoryScheduler.WordMemoryCard | undefined =
     currentItem === undefined
@@ -334,38 +387,18 @@ function PracticeSession({
           : "next stage",
   };
   const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
-  const displayedPhase = isShowingResult
-    ? lastResult.phaseAfter
-    : currentItem?.state.phase;
-  const displayedKind = isShowingResult ? lastResult.kind : currentItem?.kind;
-  const isExtraPractice = displayedKind === "extra";
-  const statusLabel = isExtraPractice
-    ? "Extra practice"
-    : displayedPhase === "new"
-      ? "New"
-      : displayedPhase === "learning"
-        ? "Learning"
-        : displayedPhase === "relearning"
-          ? "Relearning"
-          : isShowingResult
-            ? "Scheduled"
-            : "Due review";
-  const statusTextClassName = isExtraPractice
-    ? "text-gold"
-    : displayedPhase === "new"
-      ? "text-sky"
-      : displayedPhase === "learning"
-        ? "text-teal"
-        : displayedPhase === "relearning"
-          ? "text-accent"
-          : isShowingResult
-            ? "text-ink-muted"
-            : "text-gold";
 
   return (
-    <section className="h-[calc(100svh-9.5rem)] min-h-0 min-w-0 overflow-hidden py-1 sm:h-auto sm:min-h-[calc(100svh-12rem)] sm:py-6">
+    <section className="relative h-[calc(100svh-1.5rem-max(1rem,env(safe-area-inset-bottom)))] min-h-0 min-w-0 overflow-hidden sm:h-[calc(100svh-2.5rem-max(1.5rem,env(safe-area-inset-bottom)))]">
+      <Link
+        to="/"
+        aria-label="Back"
+        className="absolute left-0 top-0 z-10 inline-flex h-9 w-9 items-center justify-center rounded-md text-ink-muted transition hover:bg-field hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky sm:top-2"
+      >
+        <ArrowLeft aria-hidden="true" size={18} strokeWidth={2.5} />
+      </Link>
       <form
-        className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden text-center sm:gap-5"
+        className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden pt-10 text-center sm:gap-5 sm:pt-0"
         onSubmit={(event) => {
           event.preventDefault();
 
@@ -425,54 +458,13 @@ function PracticeSession({
                 </p>
               )}
             </div>
-          ) : currentItem === undefined ? null : practiceMode ===
-            "introduction" ? (
+          ) : currentItem === undefined ? null : answerVisible ? (
             <div className="grid w-full gap-3">
-              <div className="text-xs font-black uppercase tracking-widest text-sky">
-                Meet this word
-              </div>
               <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
                 <WordText text={currentItem.word.text} />
               </h1>
               <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
                 {currentItem.word.translation}
-              </p>
-              {currentItem.word.description === undefined ? null : (
-                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
-                  {currentItem.word.description}
-                </p>
-              )}
-              {currentItem.example === undefined ? null : (
-                <div className="mt-2 grid gap-2">
-                  <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
-                    <PracticeExampleSentence
-                      answer={currentItem.example.answer}
-                      template={currentItem.example.template}
-                      revealed
-                    />
-                  </p>
-                  <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
-                    <PracticeExampleTranslation
-                      target={currentItem.example.translationTarget}
-                      template={currentItem.example.translationTemplate}
-                    />
-                  </p>
-                </div>
-              )}
-            </div>
-          ) : answerVisible ? (
-            <div className="grid w-full gap-3">
-              <div className="text-xs font-black uppercase tracking-widest text-teal">
-                Answer
-              </div>
-              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                <WordText text={currentItem.word.text} />
-              </h1>
-              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
-                {currentItem.word.translation}
-              </p>
-              <p className="text-base font-black tracking-wide text-gold sm:text-xl">
-                {FuriganaText.toReadingText({ text: currentItem.word.text })}
               </p>
               {currentItem.word.description === undefined ? null : (
                 <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
@@ -571,77 +563,38 @@ function PracticeSession({
             </div>
           )}
         </div>
-        {isShowingResult ? (
-          <Tooltip.Root>
-            <Tooltip.Trigger
-              render={
-                <Button
-                  type="button"
-                  aria-label="Next"
-                  autoFocus
-                  className="mt-auto inline-flex h-14 w-14 items-center justify-center self-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
-                  onClick={() => {
-                    actor.trigger.submit();
-                  }}
-                />
-              }
-            >
-              <ArrowRight aria-hidden="true" size={20} strokeWidth={2.5} />
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Positioner sideOffset={8}>
-                <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-                  Next
-                </Tooltip.Popup>
-              </Tooltip.Positioner>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        ) : practiceMode === "introduction" ? (
+        <div className="grid w-full justify-items-center gap-1 text-center text-xs font-normal leading-5 text-ink-muted">
+          {message === undefined ? null : (
+            <span className="font-bold text-accent">{message}</span>
+          )}
+        </div>
+        {practiceMode !== "contextRecall" && !answerVisible ? (
           <Button
             type="button"
             autoFocus
-            className="mt-auto inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
-            disabled={isSubmitting}
-            onClick={() => {
-              actor.trigger.introduce();
-            }}
-          >
-            I’ve seen it
-            <ArrowRight aria-hidden="true" size={18} strokeWidth={2.5} />
-          </Button>
-        ) : practiceMode !== "contextRecall" && !answerVisible ? (
-          <Button
-            type="button"
-            autoFocus
-            className="mt-auto inline-flex h-14 items-center justify-center gap-2 self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+            className="mt-auto inline-flex h-14 min-h-14 w-full shrink-0 items-center justify-center self-center rounded-md bg-action px-6 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
             disabled={isSubmitting}
             onClick={() => {
               actor.trigger.reveal();
             }}
           >
-            <Eye aria-hidden="true" size={18} strokeWidth={2.5} />
             Reveal
           </Button>
         ) : answerVisible ? (
-          <div className="mt-auto grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
-            <Button
-              type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-again bg-panel px-4 text-sm font-black text-rating-again transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-again disabled:opacity-60"
+          <div className="mt-auto grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4">
+            <ConfirmRatingButton
+              buttonClassName="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-again bg-panel px-4 text-sm font-black text-rating-again transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-again disabled:opacity-60"
+              description="Again resets the word to a short learning interval and substantially lowers its schedule."
               disabled={isSubmitting}
-              onClick={() => {
+              interval={ratingIntervals?.again}
+              label="Again"
+              onConfirm={() => {
                 actor.trigger.rateAgain();
               }}
-            >
-              <span className="grid gap-0.5">
-                <span>Again</span>
-                <span className="text-[0.65rem] opacity-75">
-                  {ratingIntervals?.again}
-                </span>
-              </span>
-            </Button>
+            />
             <Button
               type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-hard bg-panel px-4 text-sm font-black text-rating-hard transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-hard disabled:opacity-60"
+              className="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-hard bg-panel px-4 text-sm font-black text-rating-hard transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-hard disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateHard();
@@ -657,7 +610,7 @@ function PracticeSession({
             <Button
               type="button"
               autoFocus
-              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-good bg-panel px-4 text-sm font-black text-rating-good transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-good disabled:opacity-60"
+              className="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-good bg-panel px-4 text-sm font-black text-rating-good transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-good disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateGood();
@@ -670,24 +623,19 @@ function PracticeSession({
                 </span>
               </span>
             </Button>
-            <Button
-              type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-easy bg-panel px-4 text-sm font-black text-rating-easy transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-easy disabled:opacity-60"
+            <ConfirmRatingButton
+              buttonClassName="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-easy bg-panel px-4 text-sm font-black text-rating-easy transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-easy disabled:opacity-60"
+              description="Easy moves the word to a much longer interval and may advance it to the next stage."
               disabled={isSubmitting}
-              onClick={() => {
+              interval={ratingIntervals?.easy}
+              label="Easy"
+              onConfirm={() => {
                 actor.trigger.rateEasy();
               }}
-            >
-              <span className="grid gap-0.5">
-                <span>Easy</span>
-                <span className="text-[0.65rem] opacity-75">
-                  {ratingIntervals?.easy}
-                </span>
-              </span>
-            </Button>
+            />
           </div>
         ) : (
-          <div className="mt-auto flex w-full min-w-0 gap-2">
+          <div className="mt-auto flex w-full min-w-0 shrink-0 gap-2">
             {currentItem?.example === undefined ||
             currentItem.word.description === undefined ||
             hintVisible ? null : (
@@ -777,43 +725,6 @@ function PracticeSession({
             </Tooltip.Root>
           </div>
         )}
-        <div
-          aria-label="Session progress"
-          aria-live="polite"
-          className="flex min-h-5 w-full flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-xs font-black tabular-nums text-ink-muted"
-        >
-          <span className="inline-flex items-baseline gap-1">
-            <span>{stats.attemptCount}</span>
-            <span>total</span>
-          </span>
-          <span aria-hidden="true">・</span>
-          <span
-            aria-label={`${stats.correctCount} correct`}
-            className="inline-flex items-center gap-1 text-sky"
-          >
-            <CircleCheck aria-hidden="true" size={14} strokeWidth={2.5} />
-            {stats.correctCount}
-          </span>
-          <span
-            aria-label={`${stats.attemptCount - stats.correctCount} incorrect`}
-            className="inline-flex items-center gap-1 text-berry"
-          >
-            <CircleX aria-hidden="true" size={14} strokeWidth={2.5} />
-            {stats.attemptCount - stats.correctCount}
-          </span>
-          <span aria-hidden="true">・</span>
-          <span className={statusTextClassName}>{statusLabel}</span>
-        </div>
-        <div className="grid w-full justify-items-center gap-1 text-center text-xs font-normal leading-5 text-ink-muted">
-          {message === undefined ? null : (
-            <span className="font-bold text-accent">{message}</span>
-          )}
-          {lastResult === undefined ? null : (
-            <span>
-              Next {formatDateTime({ dateTime: lastResult.nextReviewAt })}
-            </span>
-          )}
-        </div>
       </form>
     </section>
   );

@@ -99,14 +99,6 @@ const SubmitPracticeInputSchema = Schema.Struct({
   stats: PracticeSessionStatsSchema,
 });
 
-const RecordIntroductionInputSchema = Schema.Struct({
-  currentItem: Schema.optionalKey(PracticeItemSchema),
-});
-
-const RecordIntroductionOutputSchema = Schema.Struct({
-  item: PracticeItemSchema,
-});
-
 type MemoryState = typeof Domain.WordMemoryState.Type;
 type SessionSelectionState = typeof SessionSelectionStateSchema.Type;
 
@@ -308,7 +300,6 @@ export const makePracticeOverviewMachine = ({
         changeResponse: Schema.toStandardSchemaV1(
           Schema.Struct({ response: Schema.String })
         ),
-        introduce: Schema.toStandardSchemaV1(Schema.Void),
         rateAgain: Schema.toStandardSchemaV1(Schema.Void),
         rateHard: Schema.toStandardSchemaV1(Schema.Void),
         rateGood: Schema.toStandardSchemaV1(Schema.Void),
@@ -320,40 +311,6 @@ export const makePracticeOverviewMachine = ({
       },
     },
     actorSources: {
-      recordIntroduction: createAsyncLogic({
-        schemas: {
-          input: Schema.toStandardSchemaV1(RecordIntroductionInputSchema),
-          output: Schema.toStandardSchemaV1(RecordIntroductionOutputSchema),
-        },
-        run: ({ input }) =>
-          runtime.runPromise(
-            Effect.gen(function* () {
-              const currentItem = input.currentItem;
-
-              if (currentItem === undefined) {
-                return yield* Effect.fail(
-                  new Error("Could not find a word to introduce.")
-                );
-              }
-
-              const introducedAt = DateTime.toEpochMillis(yield* DateTime.now);
-              const state = new Domain.WordMemoryState({
-                ...currentItem.state,
-                introducedAt: DateTime.makeUnsafe(introducedAt),
-                updatedAt: DateTime.makeUnsafe(introducedAt),
-              });
-              const store = yield* Store.Store;
-              yield* store.replaceMemoryStates([state]);
-
-              return {
-                item: {
-                  ...currentItem,
-                  state,
-                },
-              };
-            })
-          ),
-      }),
       loadPracticeSession: createAsyncLogic({
         schemas: {
           output: Schema.toStandardSchemaV1(PracticeSessionDataSchema),
@@ -465,13 +422,12 @@ export const makePracticeOverviewMachine = ({
                   currentItem.state.correctCount + (isCorrect ? 1 : 0),
                 incorrectCount:
                   currentItem.state.incorrectCount + (isCorrect ? 0 : 1),
-                ...(currentItem.state.introducedAt === undefined
-                  ? {}
-                  : {
-                      introducedAt: _toEpochMillis({
+                introducedAt:
+                  currentItem.state.introducedAt === undefined
+                    ? reviewedAt
+                    : _toEpochMillis({
                         dateTime: currentItem.state.introducedAt,
                       }),
-                    }),
                 ...(stageTransition.card.lastReviewAtMillis === undefined
                   ? {}
                   : { lastReviewAt: stageTransition.card.lastReviewAtMillis }),
@@ -650,9 +606,6 @@ export const makePracticeOverviewMachine = ({
           refresh: {
             target: "Loading",
           },
-          introduce: {
-            target: "RecordingIntroduction",
-          },
           rateGood: {
             target: "Submitting",
             context: {
@@ -706,22 +659,40 @@ export const makePracticeOverviewMachine = ({
             sessionId: context.sessionId,
             stats: context.stats,
           }),
-          onDone: ({ event }) => ({
-            target: "Revealed",
-            context: {
-              answerVisible: false,
-              rating: undefined,
-              currentItem: undefined,
-              currentResponse: "",
-              dueReviewCount: event.output.dueReviewCount,
-              hintVisible: false,
-              lastResult: event.output.result,
-              message: event.output.message,
-              nextItem: event.output.nextItem,
-              selectionState: event.output.selectionState,
-              stats: event.output.stats,
-            },
-          }),
+          onDone: ({ event }) =>
+            event.output.nextItem === undefined
+              ? {
+                  target: "Loading",
+                  context: {
+                    answerVisible: false,
+                    rating: undefined,
+                    currentItem: undefined,
+                    currentResponse: "",
+                    dueReviewCount: event.output.dueReviewCount,
+                    hintVisible: false,
+                    lastResult: undefined,
+                    message: event.output.message,
+                    nextItem: undefined,
+                    selectionState: event.output.selectionState,
+                    stats: event.output.stats,
+                  },
+                }
+              : {
+                  target: "Ready",
+                  context: {
+                    answerVisible: false,
+                    rating: undefined,
+                    currentItem: event.output.nextItem,
+                    currentResponse: "",
+                    dueReviewCount: event.output.dueReviewCount,
+                    hintVisible: false,
+                    lastResult: undefined,
+                    message: event.output.message,
+                    nextItem: undefined,
+                    selectionState: event.output.selectionState,
+                    stats: event.output.stats,
+                  },
+                },
           onError: ({ event }) => ({
             target: "Ready",
             context: {
@@ -759,33 +730,6 @@ export const makePracticeOverviewMachine = ({
                     nextItem: undefined,
                   },
                 },
-        },
-      },
-      RecordingIntroduction: {
-        invoke: {
-          src: "recordIntroduction",
-          input: ({ context }) => ({
-            currentItem: context.currentItem,
-          }),
-          onDone: ({ event }) => ({
-            target: "Ready",
-            context: {
-              answerVisible: false,
-              rating: undefined,
-              currentItem: event.output.item,
-              currentResponse: "",
-              message: undefined,
-            },
-          }),
-          onError: ({ event }) => ({
-            target: "Ready",
-            context: {
-              message:
-                event.error instanceof Error
-                  ? event.error.message
-                  : "Could not save the introduction.",
-            },
-          }),
         },
       },
       EmptyLibrary: {
