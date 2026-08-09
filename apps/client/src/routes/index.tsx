@@ -44,6 +44,13 @@ const StageLabels = {
   contextRecall: "Context recall",
 } as const;
 
+const RatingColorClasses = {
+  again: "border-rating-again text-rating-again",
+  easy: "border-rating-easy text-rating-easy",
+  good: "border-rating-good text-rating-good",
+  hard: "border-rating-hard text-rating-hard",
+} as const;
+
 const AvailabilityLabels = {
   due: "Due",
   later: "Later",
@@ -425,10 +432,10 @@ function WordHistoryDetails({
           <p className="text-sm font-black text-ink">Ratings loading…</p>
         ) : (
           <div className="grid grid-cols-4 gap-1.5 font-black text-ink">
-            <RatingTotal label="Again" total={ratingCounts.again} />
-            <RatingTotal label="Hard" total={ratingCounts.hard} />
-            <RatingTotal isPositive label="Good" total={ratingCounts.good} />
-            <RatingTotal isPositive label="Easy" total={ratingCounts.easy} />
+            <RatingTotal rating="again" total={ratingCounts.again} />
+            <RatingTotal rating="hard" total={ratingCounts.hard} />
+            <RatingTotal rating="good" total={ratingCounts.good} />
+            <RatingTotal rating="easy" total={ratingCounts.easy} />
           </div>
         )}
         <p className="mt-2 text-center">
@@ -458,17 +465,17 @@ function WordHistoryDetails({
 }
 
 function RatingTotal({
-  isPositive = false,
-  label,
+  rating,
   total,
 }: {
-  readonly isPositive?: boolean;
-  readonly label: string;
+  readonly rating: keyof typeof RatingColorClasses;
   readonly total: number;
 }) {
+  const label = `${rating.charAt(0).toLocaleUpperCase()}${rating.slice(1)}`;
+
   return (
     <span
-      className={`flex min-w-0 items-center justify-center rounded-md border bg-panel px-1 py-2 text-[0.7rem] sm:text-xs ${isPositive ? "border-sky" : "border-accent"} ${total === 0 ? "opacity-40" : ""}`}
+      className={`flex min-w-0 items-center justify-center rounded-md border bg-panel px-1 py-2 text-[0.7rem] sm:text-xs ${RatingColorClasses[rating]} ${total === 0 ? "opacity-40" : ""}`}
     >
       {label} {total}
     </span>
@@ -489,9 +496,7 @@ function WordHistoryAttemptRow({
     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-4">
       <ResultIcon
         aria-label={`${attempt.rating} rating`}
-        className={
-          isPositiveRating ? "shrink-0 text-teal" : "shrink-0 text-accent"
-        }
+        className={`shrink-0 ${RatingColorClasses[attempt.rating]}`}
         role="img"
         size={20}
         strokeWidth={2.5}

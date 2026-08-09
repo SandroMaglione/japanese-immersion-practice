@@ -626,7 +626,7 @@ function PracticeSession({
           <div className="mt-10 grid w-full grid-cols-2 gap-2 sm:grid-cols-4">
             <Button
               type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-berry bg-panel px-4 text-sm font-black text-berry transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-berry disabled:opacity-60"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-again bg-panel px-4 text-sm font-black text-rating-again transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-again disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateAgain();
@@ -641,7 +641,7 @@ function PracticeSession({
             </Button>
             <Button
               type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-gold bg-panel px-4 text-sm font-black text-gold transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold disabled:opacity-60"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-hard bg-panel px-4 text-sm font-black text-rating-hard transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-hard disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateHard();
@@ -657,7 +657,7 @@ function PracticeSession({
             <Button
               type="button"
               autoFocus
-              className="inline-flex h-14 items-center justify-center rounded-md bg-action px-4 text-sm font-black text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-good bg-panel px-4 text-sm font-black text-rating-good transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-good disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateGood();
@@ -672,7 +672,7 @@ function PracticeSession({
             </Button>
             <Button
               type="button"
-              className="inline-flex h-14 items-center justify-center rounded-md border border-teal bg-panel px-4 text-sm font-black text-teal transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal disabled:opacity-60"
+              className="inline-flex h-14 items-center justify-center rounded-md border border-rating-easy bg-panel px-4 text-sm font-black text-rating-easy transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-easy disabled:opacity-60"
               disabled={isSubmitting}
               onClick={() => {
                 actor.trigger.rateEasy();
