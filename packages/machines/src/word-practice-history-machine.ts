@@ -246,7 +246,7 @@ export const makeWordPracticeHistoryMachine = ({
                     scheduledDays: state.scheduledDays,
                     stability: state.stability,
                   };
-                  const isDue = WordMemoryScheduler.isDue({ card, now });
+                  const isDue = DateTime.toEpochMillis(state.dueAt) <= now;
 
                   return [
                     {

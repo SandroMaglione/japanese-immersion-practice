@@ -1,11 +1,14 @@
 import { Button } from "@base-ui/react/button";
 import { Dialog } from "@base-ui/react/dialog";
 import { Input } from "@base-ui/react/input";
+import { Tabs } from "@base-ui/react/tabs";
 import { WordPracticeHistoryMachine } from "@jip/machines";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
-import { Array as EffectArray } from "effect";
+import { Array as EffectArray, DateTime } from "effect";
 import {
+  AlarmClock,
+  CalendarClock,
   CircleCheck,
   CircleX,
   LoaderCircle,
@@ -17,7 +20,7 @@ import type { ReactNode } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
-import { formatDateTime } from "../lib/format.ts";
+import { formatDateTime, formatReviewInterval } from "../lib/format.ts";
 import { RuntimeClient } from "../lib/runtime-client.ts";
 
 const wordPracticeHistoryMachine =
@@ -50,6 +53,22 @@ const StageLabels = {
   contextRecall: "Context recall",
 } as const;
 
+const AvailabilityLabels = {
+  due: "Due",
+  later: "Later",
+} as const;
+
+const AvailabilityPresentation = {
+  due: {
+    activeClassName: "border-gold/55 bg-gold-soft text-gold",
+    Icon: AlarmClock,
+  },
+  later: {
+    activeClassName: "border-line bg-field text-ink",
+    Icon: CalendarClock,
+  },
+} as const;
+
 export const Route = createFileRoute("/")({
   component: WordHistoryRoute,
 });
@@ -63,9 +82,6 @@ function WordHistoryRoute() {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="flex justify-center">
-        <WordHistorySearch actor={actor} />
-      </section>
       {isLoading ? (
         <div className="py-10 text-center text-sm font-bold text-ink-muted">
           Loading word history
@@ -88,11 +104,72 @@ function WordHistoryRoute() {
       ) : null}
       {isReady ? (
         <>
-          <WordHistoryList actor={actor} />
+          <WordHistoryOverview actor={actor} />
           <WordHistoryDialog actor={actor} />
         </>
       ) : null}
     </div>
+  );
+}
+
+function WordHistoryOverview({
+  actor,
+}: {
+  readonly actor: WordPracticeHistoryActor;
+}) {
+  const summaries = useSelector(
+    actor,
+    (snapshot) => snapshot.context.summaries
+  );
+  const availability = ["due", "later"] as const;
+
+  return (
+    <Tabs.Root className="flex min-w-0 flex-col gap-4" defaultValue="due">
+      <Tabs.List
+        aria-label="Review availability"
+        className="grid w-full min-w-0 grid-cols-2 gap-2"
+      >
+        {availability.map((status) => {
+          const presentation = AvailabilityPresentation[status];
+          const StatusIcon = presentation.Icon;
+          const count = summaries.filter((summary) =>
+            status === "due" ? summary.isDue : !summary.isDue
+          ).length;
+
+          return (
+            <Tabs.Tab
+              key={status}
+              value={status}
+              aria-label={`${AvailabilityLabels[status]}, ${count} words`}
+              className={({ active }: { readonly active: boolean }) =>
+                `grid h-[5.25rem] min-w-0 grid-cols-[auto_minmax(0,1fr)] grid-rows-[1fr_auto] items-center gap-x-2 rounded-xl border p-3 text-left shadow-[0_10px_28px_rgba(0,0,0,0.14)] transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky ${active ? presentation.activeClassName : "border-line/80 bg-panel text-ink-muted hover:border-ink-muted/50 hover:bg-field hover:text-ink"}`
+              }
+            >
+              <StatusIcon
+                aria-hidden="true"
+                className="row-span-2 self-center"
+                size={20}
+                strokeWidth={2.25}
+              />
+              <strong className="justify-self-end text-2xl font-black tabular-nums leading-none">
+                {count}
+              </strong>
+              <span className="justify-self-end text-[0.65rem] font-black uppercase tracking-[0.12em] opacity-80">
+                {AvailabilityLabels[status]}
+              </span>
+            </Tabs.Tab>
+          );
+        })}
+      </Tabs.List>
+      <section className="flex justify-center">
+        <WordHistorySearch actor={actor} />
+      </section>
+      {availability.map((status) => (
+        <Tabs.Panel key={status} value={status}>
+          <WordHistoryList actor={actor} status={status} />
+        </Tabs.Panel>
+      ))}
+    </Tabs.Root>
   );
 }
 
@@ -149,12 +226,17 @@ function WordHistorySearch({
 
 function WordHistoryList({
   actor,
+  status,
 }: {
   readonly actor: WordPracticeHistoryActor;
+  readonly status: keyof typeof AvailabilityLabels;
 }) {
-  const summaries = useSelector(
+  const matchingSummaries = useSelector(
     actor,
     (snapshot) => snapshot.context.matchingSummaries
+  );
+  const summaries = matchingSummaries.filter((summary) =>
+    status === "due" ? summary.isDue : !summary.isDue
   );
   const visibleSummaryCount = useSelector(
     actor,
@@ -165,7 +247,9 @@ function WordHistoryList({
   if (!EffectArray.isReadonlyArrayNonEmpty(summaries)) {
     return (
       <div className="py-14 text-center">
-        <div className="text-lg font-black">No words found</div>
+        <div className="text-lg font-black">
+          No {AvailabilityLabels[status].toLocaleLowerCase()} words found
+        </div>
         <div className="mt-2 text-sm font-semibold text-ink-muted">
           Add words or adjust the search text.
         </div>
@@ -177,36 +261,11 @@ function WordHistoryList({
     <div>
       <section className="divide-y divide-line">
         {visibleSummaries.map((summary) => (
-          <button
+          <WordHistoryRow
             key={summary.word.id}
-            type="button"
-            className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-4 text-left transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
-            onClick={() => {
-              actor.trigger.selectWord({ wordId: summary.word.id });
-            }}
-          >
-            <div className="min-w-0">
-              <span className="wrap-break-word text-xl font-black leading-tight">
-                <WordText text={summary.word.text} />
-              </span>
-              <p className="mt-1 text-xs font-bold text-ink-muted">
-                {summary.attemptCount} attempts · {summary.accuracy}% correct
-              </p>
-              <p className="mt-1 text-xs font-black text-sky">
-                {StageLabels[summary.state.stage]}
-              </p>
-            </div>
-            <div className="text-right">
-              <p
-                className={`text-sm font-black ${summary.isDue ? "text-gold" : "text-ink"}`}
-              >
-                {StatusLabels[summary.status]}
-              </p>
-              <p className="mt-1 text-xs font-bold text-ink-muted">
-                {Math.round(summary.retrievability * 100)}% recall
-              </p>
-            </div>
-          </button>
+            actor={actor}
+            summary={summary}
+          />
         ))}
       </section>
       {visibleSummaries.length < summaries.length ? (
@@ -223,6 +282,55 @@ function WordHistoryList({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function WordHistoryRow({
+  actor,
+  summary,
+}: {
+  readonly actor: WordPracticeHistoryActor;
+  readonly summary: ReturnType<
+    WordPracticeHistoryActor["getSnapshot"]
+  >["context"]["summaries"][number];
+}) {
+  const reviewInterval = formatReviewInterval({
+    dueAt: DateTime.toEpochMillis(summary.state.dueAt),
+    now: Date.now(),
+  });
+  const stability =
+    summary.state.stability < 1
+      ? `${Math.max(1, Math.round(summary.state.stability * 24))}h stability`
+      : `${Math.round(summary.state.stability)}d stability`;
+
+  return (
+    <button
+      type="button"
+      className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-4 px-3 py-4 text-left transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky"
+      onClick={() => {
+        actor.trigger.selectWord({ wordId: summary.word.id });
+      }}
+    >
+      <div className="min-w-0">
+        <span className="wrap-break-word text-xl font-black leading-tight">
+          <WordText text={summary.word.text} />
+        </span>
+        <p className="mt-1 text-xs font-black text-sky">
+          {StageLabels[summary.state.stage]}
+        </p>
+      </div>
+      <div className="grid min-w-0 justify-items-end gap-1 justify-self-end text-right">
+        <p className="whitespace-nowrap text-sm font-normal text-ink">
+          {summary.isDue ? "Due now" : `Review in ${reviewInterval}`}
+        </p>
+        <p className="text-xs font-normal leading-5 text-ink-muted">
+          {stability}
+        </p>
+        <p className="text-xs font-normal leading-5 text-ink-muted">
+          {Math.round(summary.retrievability * 100)}% recall
+        </p>
+      </div>
+    </button>
   );
 }
 
