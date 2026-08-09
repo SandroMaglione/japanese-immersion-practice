@@ -16,7 +16,6 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { ReactNode } from "react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
@@ -38,14 +37,6 @@ type WordPracticeHistoryActor = Actor<typeof wordPracticeHistoryMachine>;
 type WordHistoryAttempt = ReturnType<
   WordPracticeHistoryActor["getSnapshot"]
 >["context"]["selectedAttempts"][number];
-
-const StatusLabels = {
-  due: "Due",
-  learning: "Learning",
-  new: "New",
-  relearning: "Relearning",
-  scheduled: "Scheduled",
-} as const;
 
 const StageLabels = {
   recognition: "Recognition",
@@ -409,10 +400,13 @@ function WordHistoryDetails({
     WordPracticeHistoryActor["getSnapshot"]
   >["context"]["summaries"][number];
 }) {
-  const stability =
-    summary.state.stability < 1
-      ? `${Math.max(1, Math.round(summary.state.stability * 24))} hours`
-      : `${Math.round(summary.state.stability)} days`;
+  const now = Date.now();
+  const ratingCounts = {
+    again: attempts.filter((attempt) => attempt.rating === "again").length,
+    easy: attempts.filter((attempt) => attempt.rating === "easy").length,
+    good: attempts.filter((attempt) => attempt.rating === "good").length,
+    hard: attempts.filter((attempt) => attempt.rating === "hard").length,
+  };
 
   return (
     <div className="grid gap-4">
@@ -424,30 +418,20 @@ function WordHistoryDetails({
           {summary.word.description}
         </p>
       )}
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <WordHistoryStat label="Status" value={StatusLabels[summary.status]} />
-        <WordHistoryStat
-          label="Recall"
-          value={`${Math.round(summary.retrievability * 100)}%`}
-        />
-        <WordHistoryStat label="Stability" value={stability} />
-        <WordHistoryStat
-          label="Next"
-          value={
-            summary.isDue
-              ? "Due now"
-              : formatDateTime({ dateTime: summary.state.dueAt })
-          }
-        />
-        <WordHistoryStat label="Accuracy" value={`${summary.accuracy}%`} />
-        <WordHistoryStat label="Attempts" value={`${summary.attemptCount}`} />
-        <WordHistoryStat label="Correct" value={`${summary.correctCount}`} />
-        <WordHistoryStat label="Lapses" value={`${summary.state.lapses}`} />
-      </dl>
-      <p className="text-xs font-black text-ink-muted">
-        Last practiced{" "}
-        {formatDateTime({ dateTime: summary.state.lastPracticedAt })}
-      </p>
+      <div className="grid gap-1 text-xs font-bold text-ink-muted">
+        <p>
+          Added {_formatElapsed({ dateTime: summary.word.createdAt, now })} ago
+        </p>
+        <p className="whitespace-nowrap">
+          {isLoading
+            ? "Ratings loading…"
+            : `Again ${ratingCounts.again} · Hard ${ratingCounts.hard} · Good ${ratingCounts.good} · Easy ${ratingCounts.easy}`}
+        </p>
+        <p>
+          Last practiced{" "}
+          {_formatElapsed({ dateTime: summary.state.lastPracticedAt, now })} ago
+        </p>
+      </div>
       {isLoading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm font-bold text-ink-muted">
           <LoaderCircle className="animate-spin" size={18} strokeWidth={2.5} />
@@ -473,15 +457,18 @@ function WordHistoryAttemptRow({
 }: {
   readonly attempt: WordHistoryAttempt;
 }) {
-  const isCorrect = attempt.result === "correct";
-  const ResultIcon = isCorrect ? CircleCheck : CircleX;
+  const isPositiveRating =
+    attempt.rating === "good" || attempt.rating === "easy";
+  const ResultIcon = isPositiveRating ? CircleCheck : CircleX;
   const sourceLabel = `${StageLabels[attempt.stage]} · ${attempt.rating.charAt(0).toLocaleUpperCase()}${attempt.rating.slice(1)}`;
 
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 py-4">
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-4">
       <ResultIcon
-        aria-label={isCorrect ? "Correct" : "Incorrect"}
-        className={isCorrect ? "shrink-0 text-teal" : "shrink-0 text-accent"}
+        aria-label={`${attempt.rating} rating`}
+        className={
+          isPositiveRating ? "shrink-0 text-teal" : "shrink-0 text-accent"
+        }
         role="img"
         size={20}
         strokeWidth={2.5}
@@ -500,24 +487,24 @@ function WordHistoryAttemptRow({
   );
 }
 
-function WordHistoryStat({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: ReactNode;
-}) {
-  return (
-    <div className="rounded-md border border-line bg-panel px-3 py-2">
-      <dt className="text-[0.7rem] font-black uppercase text-ink-muted">
-        {label}
-      </dt>
-      <dd className="mt-1 wrap-break-word text-sm font-black text-ink">
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 const _formatWordCount = ({ count }: { readonly count: number }) =>
   `${count} ${count === 1 ? "word" : "words"}`;
+
+const _formatElapsed = ({
+  dateTime,
+  now,
+}: {
+  readonly dateTime: DateTime.Utc;
+  readonly now: number;
+}) => {
+  const elapsedMillis = Math.max(0, now - DateTime.toEpochMillis(dateTime));
+  const seconds = Math.round(elapsedMillis / 1_000);
+
+  return seconds < 60
+    ? `${seconds}s`
+    : seconds < 3_600
+      ? `${Math.round(seconds / 60)}m`
+      : seconds < 86_400
+        ? `${Math.round(seconds / 3_600)}h`
+        : `${Math.round(seconds / 86_400)}d`;
+};
