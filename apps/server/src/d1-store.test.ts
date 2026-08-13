@@ -24,6 +24,7 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
         "0001-initial.sql",
         "0002-word-introductions.sql",
         "0003-staged-practice-reset.sql",
+        "0004-fast-acquisition.sql",
       ].map((name) =>
         readFile(
           fileURLToPath(new URL(`../migrations/${name}`, import.meta.url).href),
@@ -66,6 +67,7 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       stage: "recognition",
       stageStartedAt: now,
       stageAttemptCount: 0,
+      stageFailureStreak: 0,
       stageMasteryStreak: 0,
       phase: "new",
       dueAt: now,
@@ -138,6 +140,7 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
       result: "correct",
       rating: "good",
       stage: "recognition",
+      demotedTo: "meaningRecall",
       kind: "scheduled",
       source: "new",
       previousDueAt: now,
@@ -165,6 +168,7 @@ test("the D1 store round-trips camel-case domain values through snake-case rows"
 
   assert.equal(storedEvents[0]?.rating, "good");
   assert.equal(storedEvents[0]?.stage, "recognition");
+  assert.equal(storedEvents[0]?.demotedTo, "meaningRecall");
 
   await db
     .prepare(

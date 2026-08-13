@@ -10,18 +10,23 @@ const _event = ({
   id,
   kind = "scheduled",
   minute,
-  result = "correct",
+  rating = "good",
+  resetAtMinute,
   sessionPosition,
 }: {
   readonly id: string;
   readonly kind?: "extra" | "scheduled";
   readonly minute: number;
-  readonly result?: "correct" | "incorrect";
+  readonly rating?: "again" | "hard" | "good" | "easy";
+  readonly resetAtMinute?: number;
   readonly sessionPosition: number;
 }) => ({
   id,
   kind,
-  result,
+  rating,
+  ...(resetAtMinute === undefined
+    ? {}
+    : { resetAtMillis: start + resetAtMinute * Minute }),
   reviewedAtMillis: start + minute * Minute,
   sessionId: "session",
   sessionPosition,
@@ -70,7 +75,7 @@ test("early incorrect practice still changes the durable card", () => {
       _event({
         id: "early-miss",
         minute: 1,
-        result: "incorrect",
+        rating: "again",
         sessionPosition: 1,
       }),
     ],
@@ -99,6 +104,25 @@ test("explicit extra practice remains extra even after the due time", () => {
   assert.equal(replay.card.phase, "learning");
   assert.equal(replay.card.repetitions, 1);
   assert.equal(replay.reclassifiedEventCount, 0);
+});
+
+test("stage transitions reset the card at the next stage due time", () => {
+  const replay = replayPracticeHistory({
+    createdAtMillis: start,
+    events: [
+      _event({
+        id: "promotion",
+        minute: 0,
+        rating: "easy",
+        resetAtMinute: 24 * 60,
+        sessionPosition: 0,
+      }),
+    ],
+  });
+
+  assert.equal(replay.card.phase, "new");
+  assert.equal(replay.card.dueAtMillis, start + 24 * 60 * Minute);
+  assert.equal(replay.card.repetitions, 0);
 });
 
 test("event replay is chronological and deterministic", () => {

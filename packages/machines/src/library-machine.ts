@@ -451,6 +451,7 @@ const _makeWordAndState = ({
       stage: "recognition",
       stageStartedAt: now,
       stageAttemptCount: 0,
+      stageFailureStreak: 0,
       stageMasteryStreak: 0,
       phase: card.phase,
       dueAt: card.dueAtMillis,

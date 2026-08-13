@@ -129,7 +129,10 @@ const _calculateRecalculation = ({
       events: wordEvents.map((event) => ({
         id: event.id,
         kind: event.kind,
-        result: event.result,
+        rating: event.rating,
+        ...(event.promotedTo === undefined && event.demotedTo === undefined
+          ? {}
+          : { resetAtMillis: DateTime.toEpochMillis(event.nextDueAt) }),
         reviewedAtMillis: DateTime.toEpochMillis(event.reviewedAt),
         sessionId: event.sessionId,
         sessionPosition: event.sessionPosition,

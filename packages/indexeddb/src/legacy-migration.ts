@@ -141,6 +141,7 @@ export const buildVersion5Data = ({
       stage: "contextRecall",
       stageStartedAt: legacyWord.createdAt,
       stageAttemptCount: submissionsForWord.length,
+      stageFailureStreak: 0,
       stageMasteryStreak: 0,
       phase: memoryCard.phase,
       dueAt: memoryCard.dueAtMillis,

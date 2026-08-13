@@ -308,13 +308,10 @@ function PracticeSession({
       ? undefined
       : {
           card: ratingCard,
-          hasExamples: (currentItem.word.examples?.length ?? 0) > 0,
-          ...(ratingCard.lastReviewAtMillis === undefined
-            ? {}
-            : { lastReviewAtMillis: ratingCard.lastReviewAtMillis }),
           now: ratingNow,
           stage: currentItem.state.stage,
           stageAttemptCount: currentItem.state.stageAttemptCount,
+          stageFailureStreak: currentItem.state.stageFailureStreak,
           stageMasteryStreak: currentItem.state.stageMasteryStreak,
           stageStartedAtMillis: DateTime.toEpochMillis(
             currentItem.state.stageStartedAt
@@ -353,37 +350,45 @@ function PracticeSession({
       againPreview === undefined
         ? undefined
         : againPreview.promotedTo === undefined
-          ? formatReviewInterval({
-              dueAt: againPreview.card.dueAtMillis,
-              now: ratingNow,
-            })
+          ? againPreview.demotedTo === undefined
+            ? formatReviewInterval({
+                dueAt: againPreview.card.dueAtMillis,
+                now: ratingNow,
+              })
+            : "previous stage"
           : "next stage",
     hard:
       hardPreview === undefined
         ? undefined
         : hardPreview.promotedTo === undefined
-          ? formatReviewInterval({
-              dueAt: hardPreview.card.dueAtMillis,
-              now: ratingNow,
-            })
+          ? hardPreview.demotedTo === undefined
+            ? formatReviewInterval({
+                dueAt: hardPreview.card.dueAtMillis,
+                now: ratingNow,
+              })
+            : "previous stage"
           : "next stage",
     good:
       goodPreview === undefined
         ? undefined
         : goodPreview.promotedTo === undefined
-          ? formatReviewInterval({
-              dueAt: goodPreview.card.dueAtMillis,
-              now: ratingNow,
-            })
+          ? goodPreview.demotedTo === undefined
+            ? formatReviewInterval({
+                dueAt: goodPreview.card.dueAtMillis,
+                now: ratingNow,
+              })
+            : "previous stage"
           : "next stage",
     easy:
       easyPreview === undefined
         ? undefined
         : easyPreview.promotedTo === undefined
-          ? formatReviewInterval({
-              dueAt: easyPreview.card.dueAtMillis,
-              now: ratingNow,
-            })
+          ? easyPreview.demotedTo === undefined
+            ? formatReviewInterval({
+                dueAt: easyPreview.card.dueAtMillis,
+                now: ratingNow,
+              })
+            : "previous stage"
           : "next stage",
   };
   const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
@@ -421,6 +426,11 @@ function PracticeSession({
                 <p className="text-sm font-black text-teal">
                   {StageLabels[lastResult.stage]} mastered ·{" "}
                   {StageLabels[lastResult.promotedTo]} begins tomorrow
+                </p>
+              )}
+              {lastResult.demotedTo === undefined ? null : (
+                <p className="text-sm font-black text-gold">
+                  Returning to {StageLabels[lastResult.demotedTo]} tomorrow
                 </p>
               )}
               {lastResult.example === undefined ? (
@@ -584,7 +594,7 @@ function PracticeSession({
           <div className="mt-auto grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4">
             <ConfirmRatingButton
               buttonClassName="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-again bg-panel px-4 text-sm font-black text-rating-again transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-again disabled:opacity-60"
-              description="Again resets the word to a short learning interval and substantially lowers its schedule."
+              description="Again resets acquisition progress or, after repeated context failures, returns the word to meaning recall."
               disabled={isSubmitting}
               interval={ratingIntervals?.again}
               label="Again"
@@ -625,7 +635,7 @@ function PracticeSession({
             </Button>
             <ConfirmRatingButton
               buttonClassName="inline-flex h-14 min-h-14 items-center justify-center rounded-md border border-rating-easy bg-panel px-4 text-sm font-black text-rating-easy transition hover:bg-field focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rating-easy disabled:opacity-60"
-              description="Easy moves the word to a much longer interval and may advance it to the next stage."
+              description="Easy immediately masters an acquisition stage; in context recall it uses the normal FSRS interval."
               disabled={isSubmitting}
               interval={ratingIntervals?.easy}
               label="Easy"

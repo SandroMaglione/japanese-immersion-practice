@@ -42,6 +42,7 @@ const _MemoryStateRow = Schema.Struct({
   schedulerVersion: Schema.String,
   stage: Domain.WordPracticeStage,
   stageAttemptCount: Schema.Number,
+  stageFailureStreak: Schema.Number,
   stageMasteryStreak: Schema.Number,
   stageStartedAt: Schema.Number,
   stability: Schema.Number,
@@ -58,6 +59,7 @@ const _PracticeEventRow = Schema.Struct({
   nextDueAt: Schema.Number,
   phaseBefore: Domain.WordMemoryPhase,
   phaseAfter: Domain.WordMemoryPhase,
+  demotedTo: Schema.NullOr(Domain.WordPracticeStage),
   promotedTo: Schema.NullOr(Domain.WordPracticeStage),
   previousDueAt: Schema.Number,
   result: Domain.WordPracticeResult,
@@ -107,18 +109,19 @@ ON CONFLICT(id) DO UPDATE SET
   updated_at = excluded.updated_at`;
 
 const _memoryStateInsertSql = `INSERT INTO word_memory_states (
-  word_id, stage, stage_started_at, stage_attempt_count, stage_mastery_streak,
-  phase, due_at, stability, difficulty, elapsed_days, scheduled_days,
-  learning_steps, repetitions, lapses, attempt_count, correct_count,
-  incorrect_count, introduced_at, last_review_at, last_practiced_at,
-  scheduler_version, created_at, updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  word_id, stage, stage_started_at, stage_attempt_count, stage_failure_streak,
+  stage_mastery_streak, phase, due_at, stability, difficulty, elapsed_days,
+  scheduled_days, learning_steps, repetitions, lapses, attempt_count,
+  correct_count, incorrect_count, introduced_at, last_review_at,
+  last_practiced_at, scheduler_version, created_at, updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 const _memoryStateUpsertSql = `${_memoryStateInsertSql}
 ON CONFLICT(word_id) DO UPDATE SET
   stage = excluded.stage,
   stage_started_at = excluded.stage_started_at,
   stage_attempt_count = excluded.stage_attempt_count,
+  stage_failure_streak = excluded.stage_failure_streak,
   stage_mastery_streak = excluded.stage_mastery_streak,
   phase = excluded.phase,
   due_at = excluded.due_at,
@@ -140,12 +143,11 @@ ON CONFLICT(word_id) DO UPDATE SET
   updated_at = excluded.updated_at`;
 
 const _practiceEventInsertSql = `INSERT INTO word_practice_events (
-  id, word_id, submitted_text, reviewed_at, result, rating, stage, promoted_to,
-  kind, source, previous_due_at, next_due_at, changed_schedule, phase_before,
-  phase_after, stability_after,
-  difficulty_after, scheduler_version, session_id, session_position,
-  legacy_batch_number
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  id, word_id, submitted_text, reviewed_at, result, rating, stage, demoted_to,
+  promoted_to, kind, source, previous_due_at, next_due_at, changed_schedule,
+  phase_before, phase_after, stability_after, difficulty_after,
+  scheduler_version, session_id, session_position, legacy_batch_number
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
 const _toMillis = (dateTime: DateTime.Utc) => DateTime.toEpochMillis(dateTime);
 
@@ -175,6 +177,7 @@ const _memoryStateParameters = (state: Domain.WordMemoryState) =>
     state.stage,
     _toMillis(state.stageStartedAt),
     state.stageAttemptCount,
+    state.stageFailureStreak,
     state.stageMasteryStreak,
     state.phase,
     _toMillis(state.dueAt),
@@ -272,6 +275,7 @@ const _decodeMemoryStates = (rows: readonly unknown[]) =>
         stage: row.stage,
         stageStartedAt: row.stageStartedAt,
         stageAttemptCount: row.stageAttemptCount,
+        stageFailureStreak: row.stageFailureStreak,
         stageMasteryStreak: row.stageMasteryStreak,
         phase: row.phase,
         dueAt: row.dueAt,
@@ -313,6 +317,7 @@ const _decodePracticeEvents = (rows: readonly unknown[]) =>
         result: row.result,
         rating: row.rating,
         stage: row.stage,
+        ...(row.demotedTo === null ? {} : { demotedTo: row.demotedTo }),
         ...(row.promotedTo === null ? {} : { promotedTo: row.promotedTo }),
         kind: row.kind,
         source: row.source,
@@ -603,6 +608,7 @@ export const makeD1Store = Effect.gen(function* () {
               event.result,
               event.rating,
               event.stage,
+              event.demotedTo ?? null,
               event.promotedTo ?? null,
               event.kind,
               event.source,

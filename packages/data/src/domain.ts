@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 export const NonEmptyString = Schema.String.check(Schema.isNonEmpty());
 
@@ -145,6 +145,9 @@ export class WordMemoryState extends Schema.Class<WordMemoryState>(
   stage: WordPracticeStage,
   stageStartedAt: Schema.DateTimeUtcFromMillis,
   stageAttemptCount: Schema.Number,
+  stageFailureStreak: Schema.Number.pipe(
+    Schema.withDecodingDefaultKey(Effect.succeed(0))
+  ),
   stageMasteryStreak: Schema.Number,
   phase: WordMemoryPhase,
   dueAt: Schema.DateTimeUtcFromMillis,
@@ -176,6 +179,7 @@ export class WordPracticeEvent extends Schema.Class<WordPracticeEvent>(
   result: WordPracticeResult,
   rating: WordPracticeRating,
   stage: WordPracticeStage,
+  demotedTo: Schema.optional(WordPracticeStage),
   promotedTo: Schema.optional(WordPracticeStage),
   kind: WordPracticeKind,
   source: WordPracticeSource,

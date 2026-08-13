@@ -3,13 +3,14 @@ import {
   initialCard,
   type WordMemoryCard,
   type WordMemoryPracticeKind,
-  type WordMemoryPracticeResult,
+  type WordMemoryPracticeRating,
 } from "./word-memory-scheduler.ts";
 
 export type WordMemoryRecalculationEvent = {
   readonly id: string;
   readonly kind: WordMemoryPracticeKind;
-  readonly result: WordMemoryPracticeResult;
+  readonly rating: WordMemoryPracticeRating;
+  readonly resetAtMillis?: number;
   readonly reviewedAtMillis: number;
   readonly sessionId: string;
   readonly sessionPosition: number;
@@ -56,8 +57,12 @@ export const replayPracticeHistory = ({
       card,
       kind,
       now: event.reviewedAtMillis,
-      rating: event.result === "correct" ? "good" : "again",
+      rating: event.rating,
     }).card;
+
+    if (event.resetAtMillis !== undefined) {
+      card = initialCard({ now: event.resetAtMillis });
+    }
   }
 
   return { card, reclassifiedEventCount };

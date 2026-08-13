@@ -46,6 +46,7 @@ const PracticeResultSchema = Schema.Struct({
   isCorrect: Schema.Boolean,
   rating: Domain.WordPracticeRating,
   stage: Domain.WordPracticeStage,
+  demotedTo: Schema.optionalKey(Domain.WordPracticeStage),
   promotedTo: Schema.optionalKey(Domain.WordPracticeStage),
   kind: Domain.WordPracticeKind,
   nextReviewAt: Schema.DateTimeUtcFromMillis,
@@ -386,15 +387,12 @@ export const makePracticeOverviewMachine = ({
               });
               const stageTransition = WordPracticeStage.transitionAfterRating({
                 card: transition.card,
-                hasExamples: (currentItem.word.examples?.length ?? 0) > 0,
-                ...(previousCard.lastReviewAtMillis === undefined
-                  ? {}
-                  : { lastReviewAtMillis: previousCard.lastReviewAtMillis }),
+                kind: currentItem.kind,
                 now: reviewedAt,
-                phaseBefore: previousCard.phase,
                 rating,
                 stage: currentItem.state.stage,
                 stageAttemptCount: currentItem.state.stageAttemptCount,
+                stageFailureStreak: currentItem.state.stageFailureStreak,
                 stageMasteryStreak: currentItem.state.stageMasteryStreak,
                 stageStartedAtMillis: _toEpochMillis({
                   dateTime: currentItem.state.stageStartedAt,
@@ -407,6 +405,7 @@ export const makePracticeOverviewMachine = ({
                 stage: stageTransition.stage,
                 stageStartedAt: stageTransition.stageStartedAtMillis,
                 stageAttemptCount: stageTransition.stageAttemptCount,
+                stageFailureStreak: stageTransition.stageFailureStreak,
                 stageMasteryStreak: stageTransition.stageMasteryStreak,
                 phase: stageTransition.card.phase,
                 dueAt: stageTransition.card.dueAtMillis,
@@ -448,6 +447,9 @@ export const makePracticeOverviewMachine = ({
                 result,
                 rating,
                 stage: currentItem.state.stage,
+                ...(stageTransition.demotedTo === undefined
+                  ? {}
+                  : { demotedTo: stageTransition.demotedTo }),
                 ...(stageTransition.promotedTo === undefined
                   ? {}
                   : { promotedTo: stageTransition.promotedTo }),
@@ -525,6 +527,9 @@ export const makePracticeOverviewMachine = ({
                   isCorrect,
                   rating,
                   stage: currentItem.state.stage,
+                  ...(stageTransition.demotedTo === undefined
+                    ? {}
+                    : { demotedTo: stageTransition.demotedTo }),
                   ...(stageTransition.promotedTo === undefined
                     ? {}
                     : { promotedTo: stageTransition.promotedTo }),

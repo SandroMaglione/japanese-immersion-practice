@@ -2,6 +2,7 @@ import {
   applyDeterministicPracticeResult,
   initialCard,
   type WordMemoryCard,
+  type WordMemoryPracticeKind,
 } from "./word-memory-scheduler.ts";
 
 export type WordPracticeStage =
@@ -13,82 +14,94 @@ export type WordPracticeRating = "again" | "hard" | "good" | "easy";
 
 export type WordPracticeStageTransition = {
   readonly card: WordMemoryCard;
+  readonly demotedTo?: WordPracticeStage;
   readonly promotedTo?: WordPracticeStage;
   readonly stage: WordPracticeStage;
   readonly stageAttemptCount: number;
+  readonly stageFailureStreak: number;
   readonly stageMasteryStreak: number;
   readonly stageStartedAtMillis: number;
 };
 
-export const MinimumPromotionIntervalMillis = 3 * 86_400_000;
 export const RequiredMasteryReviews = 2;
-export const PromotionDelayMillis = 86_400_000;
+export const RequiredContextFailures = 3;
+export const StageTransitionDelayMillis = 86_400_000;
 
 export const transitionAfterRating = ({
   card,
-  hasExamples,
-  lastReviewAtMillis,
+  kind,
   now,
-  phaseBefore,
   rating,
   stage,
   stageAttemptCount,
+  stageFailureStreak,
   stageMasteryStreak,
   stageStartedAtMillis,
 }: {
   readonly card: WordMemoryCard;
-  readonly hasExamples: boolean;
-  readonly lastReviewAtMillis?: number;
+  readonly kind: WordMemoryPracticeKind;
   readonly now: number;
-  readonly phaseBefore: WordMemoryCard["phase"];
   readonly rating: WordPracticeRating;
   readonly stage: WordPracticeStage;
   readonly stageAttemptCount: number;
+  readonly stageFailureStreak: number;
   readonly stageMasteryStreak: number;
   readonly stageStartedAtMillis: number;
 }): WordPracticeStageTransition => {
-  const masteryRating = rating === "good" || rating === "easy";
-  const ratedReview = phaseBefore === "review";
   const nextMasteryStreak =
-    rating === "again" || rating === "hard"
+    stage === "contextRecall"
       ? 0
-      : ratedReview && masteryRating
-        ? stageMasteryStreak + 1
-        : stageMasteryStreak;
-  const delayedReview =
-    lastReviewAtMillis !== undefined &&
-    now - lastReviewAtMillis >= MinimumPromotionIntervalMillis;
-  const nextStage =
-    stage === "recognition"
-      ? "meaningRecall"
-      : stage === "meaningRecall" && hasExamples
-        ? "contextRecall"
-        : undefined;
+      : kind === "extra"
+        ? stageMasteryStreak
+        : rating === "easy"
+          ? RequiredMasteryReviews
+          : rating === "good"
+            ? stageMasteryStreak + 1
+            : 0;
+  const nextFailureStreak =
+    stage === "contextRecall"
+      ? kind === "extra"
+        ? stageFailureStreak
+        : rating === "again"
+          ? stageFailureStreak + 1
+          : rating === "good" || rating === "easy"
+            ? 0
+            : stageFailureStreak
+      : 0;
   const promotedTo =
-    ratedReview &&
-    masteryRating &&
-    delayedReview &&
     nextMasteryStreak >= RequiredMasteryReviews
-      ? nextStage
+      ? stage === "recognition"
+        ? "meaningRecall"
+        : stage === "meaningRecall"
+          ? "contextRecall"
+          : undefined
       : undefined;
+  const demotedTo =
+    stage === "contextRecall" && nextFailureStreak >= RequiredContextFailures
+      ? "meaningRecall"
+      : undefined;
+  const transitionedTo = promotedTo ?? demotedTo;
 
-  if (promotedTo === undefined) {
+  if (transitionedTo === undefined) {
     return {
       card,
       stage,
       stageAttemptCount: stageAttemptCount + 1,
+      stageFailureStreak: nextFailureStreak,
       stageMasteryStreak: nextMasteryStreak,
       stageStartedAtMillis,
     };
   }
 
-  const nextStageStartsAt = now + PromotionDelayMillis;
+  const nextStageStartsAt = now + StageTransitionDelayMillis;
 
   return {
     card: initialCard({ now: nextStageStartsAt }),
-    promotedTo,
-    stage: promotedTo,
+    ...(demotedTo === undefined ? {} : { demotedTo }),
+    ...(promotedTo === undefined ? {} : { promotedTo }),
+    stage: transitionedTo,
     stageAttemptCount: 0,
+    stageFailureStreak: 0,
     stageMasteryStreak: 0,
     stageStartedAtMillis: nextStageStartsAt,
   };
@@ -96,22 +109,20 @@ export const transitionAfterRating = ({
 
 export const previewRating = ({
   card,
-  hasExamples,
-  lastReviewAtMillis,
   now,
   rating,
   stage,
   stageAttemptCount,
+  stageFailureStreak,
   stageMasteryStreak,
   stageStartedAtMillis,
 }: {
   readonly card: WordMemoryCard;
-  readonly hasExamples: boolean;
-  readonly lastReviewAtMillis?: number;
   readonly now: number;
   readonly rating: WordPracticeRating;
   readonly stage: WordPracticeStage;
   readonly stageAttemptCount: number;
+  readonly stageFailureStreak: number;
   readonly stageMasteryStreak: number;
   readonly stageStartedAtMillis: number;
 }) => {
@@ -124,13 +135,12 @@ export const previewRating = ({
 
   return transitionAfterRating({
     card: scheduled.card,
-    hasExamples,
-    ...(lastReviewAtMillis === undefined ? {} : { lastReviewAtMillis }),
+    kind: "scheduled",
     now,
-    phaseBefore: card.phase,
     rating,
     stage,
     stageAttemptCount,
+    stageFailureStreak,
     stageMasteryStreak,
     stageStartedAtMillis,
   });
