@@ -39,24 +39,6 @@ const PracticeSessionStatsSchema = Schema.Struct({
   scheduledCount: Schema.Number,
 });
 
-const PracticeResultSchema = Schema.Struct({
-  changedSchedule: Schema.Boolean,
-  difficulty: Schema.Number,
-  example: Schema.optionalKey(Domain.WordPracticeExample),
-  isCorrect: Schema.Boolean,
-  rating: Domain.WordPracticeRating,
-  stage: Domain.WordPracticeStage,
-  demotedTo: Schema.optionalKey(Domain.WordPracticeStage),
-  promotedTo: Schema.optionalKey(Domain.WordPracticeStage),
-  kind: Domain.WordPracticeKind,
-  nextReviewAt: Schema.DateTimeUtcFromMillis,
-  phaseAfter: Domain.WordMemoryPhase,
-  phaseBefore: Domain.WordMemoryPhase,
-  source: Domain.WordPracticeSource,
-  stability: Schema.Number,
-  word: Domain.Word,
-});
-
 const PracticeSessionDataSchema = Schema.Struct({
   activeWordCount: Schema.Number,
   dueReviewCount: Schema.Number,
@@ -69,7 +51,6 @@ const PracticeSubmitResultSchema = Schema.Struct({
   dueReviewCount: Schema.Number,
   message: Schema.optionalKey(Schema.String),
   nextItem: Schema.optionalKey(PracticeItemSchema),
-  result: PracticeResultSchema,
   selectionState: SessionSelectionStateSchema,
   stats: PracticeSessionStatsSchema,
 });
@@ -79,12 +60,8 @@ const PracticeOverviewContextSchema = Schema.Struct({
   answerVisible: Schema.Boolean,
   rating: Schema.optionalKey(Domain.WordPracticeRating),
   currentItem: Schema.optionalKey(PracticeItemSchema),
-  currentResponse: Schema.String,
   dueReviewCount: Schema.Number,
-  hintVisible: Schema.Boolean,
-  lastResult: Schema.optionalKey(PracticeResultSchema),
   message: Schema.optionalKey(Schema.String),
-  nextItem: Schema.optionalKey(PracticeItemSchema),
   selectionState: SessionSelectionStateSchema,
   sessionId: Schema.optionalKey(Domain.WordPracticeSessionId),
   stats: PracticeSessionStatsSchema,
@@ -94,7 +71,6 @@ const SubmitPracticeInputSchema = Schema.Struct({
   rating: Schema.optionalKey(Domain.WordPracticeRating),
   currentItem: Schema.optionalKey(PracticeItemSchema),
   dueReviewCount: Schema.Number,
-  response: Schema.String,
   selectionState: SessionSelectionStateSchema,
   sessionId: Schema.optionalKey(Domain.WordPracticeSessionId),
   stats: PracticeSessionStatsSchema,
@@ -298,17 +274,12 @@ export const makePracticeOverviewMachine = ({
     schemas: {
       context: Schema.toStandardSchemaV1(PracticeOverviewContextSchema),
       events: {
-        changeResponse: Schema.toStandardSchemaV1(
-          Schema.Struct({ response: Schema.String })
-        ),
         rateAgain: Schema.toStandardSchemaV1(Schema.Void),
         rateHard: Schema.toStandardSchemaV1(Schema.Void),
         rateGood: Schema.toStandardSchemaV1(Schema.Void),
         rateEasy: Schema.toStandardSchemaV1(Schema.Void),
         refresh: Schema.toStandardSchemaV1(Schema.Void),
         reveal: Schema.toStandardSchemaV1(Schema.Void),
-        showHint: Schema.toStandardSchemaV1(Schema.Void),
-        submit: Schema.toStandardSchemaV1(Schema.Void),
       },
     },
     actorSources: {
@@ -365,7 +336,6 @@ export const makePracticeOverviewMachine = ({
               }
 
               const reviewedAt = DateTime.toEpochMillis(yield* DateTime.now);
-              const submittedText = input.response.trim();
               const rating = input.rating;
 
               if (rating === undefined) {
@@ -442,7 +412,7 @@ export const makePracticeOverviewMachine = ({
               )({
                 id: crypto.randomUUID(),
                 wordId: currentItem.word.id,
-                submittedText,
+                submittedText: "",
                 reviewedAt,
                 result,
                 rating,
@@ -518,31 +488,6 @@ export const makePracticeOverviewMachine = ({
                     }
                   : {}),
                 nextItem: nextSelection.item,
-                result: {
-                  changedSchedule: transition.changedSchedule,
-                  difficulty: stageTransition.card.difficulty,
-                  ...(currentItem.example === undefined
-                    ? {}
-                    : { example: currentItem.example }),
-                  isCorrect,
-                  rating,
-                  stage: currentItem.state.stage,
-                  ...(stageTransition.demotedTo === undefined
-                    ? {}
-                    : { demotedTo: stageTransition.demotedTo }),
-                  ...(stageTransition.promotedTo === undefined
-                    ? {}
-                    : { promotedTo: stageTransition.promotedTo }),
-                  kind: currentItem.kind,
-                  nextReviewAt: DateTime.makeUnsafe(
-                    stageTransition.card.dueAtMillis
-                  ),
-                  phaseAfter: stageTransition.card.phase,
-                  phaseBefore: currentItem.state.phase,
-                  source: currentItem.source,
-                  stability: stageTransition.card.stability,
-                  word: currentItem.word,
-                },
                 selectionState: nextSelection.selectionState,
                 stats,
               };
@@ -555,9 +500,7 @@ export const makePracticeOverviewMachine = ({
       activeWordCount: 0,
       answerVisible: false,
       rating: undefined,
-      currentResponse: "",
       dueReviewCount: 0,
-      hintVisible: false,
       selectionState: InitialSelectionState,
       stats: InitialStats,
     },
@@ -578,12 +521,8 @@ export const makePracticeOverviewMachine = ({
               answerVisible: false,
               rating: undefined,
               currentItem: event.output.item,
-              currentResponse: "",
               dueReviewCount: event.output.dueReviewCount,
-              hintVisible: false,
-              lastResult: undefined,
               message: undefined,
-              nextItem: undefined,
               selectionState: event.output.selectionState,
               sessionId: event.output.sessionId,
               stats: InitialStats,
@@ -602,12 +541,6 @@ export const makePracticeOverviewMachine = ({
       },
       Ready: {
         on: {
-          changeResponse: ({ event }) => ({
-            context: {
-              currentResponse: event.response,
-              message: undefined,
-            },
-          }),
           refresh: {
             target: "Loading",
           },
@@ -640,16 +573,6 @@ export const makePracticeOverviewMachine = ({
               answerVisible: true,
             },
           },
-          showHint: {
-            context: {
-              hintVisible: true,
-            },
-          },
-          submit: {
-            context: {
-              answerVisible: true,
-            },
-          },
         },
       },
       Submitting: {
@@ -659,7 +582,6 @@ export const makePracticeOverviewMachine = ({
             rating: context.rating,
             currentItem: context.currentItem,
             dueReviewCount: context.dueReviewCount,
-            response: context.currentResponse,
             selectionState: context.selectionState,
             sessionId: context.sessionId,
             stats: context.stats,
@@ -672,12 +594,8 @@ export const makePracticeOverviewMachine = ({
                     answerVisible: false,
                     rating: undefined,
                     currentItem: undefined,
-                    currentResponse: "",
                     dueReviewCount: event.output.dueReviewCount,
-                    hintVisible: false,
-                    lastResult: undefined,
                     message: event.output.message,
-                    nextItem: undefined,
                     selectionState: event.output.selectionState,
                     stats: event.output.stats,
                   },
@@ -688,12 +606,8 @@ export const makePracticeOverviewMachine = ({
                     answerVisible: false,
                     rating: undefined,
                     currentItem: event.output.nextItem,
-                    currentResponse: "",
                     dueReviewCount: event.output.dueReviewCount,
-                    hintVisible: false,
-                    lastResult: undefined,
                     message: event.output.message,
-                    nextItem: undefined,
                     selectionState: event.output.selectionState,
                     stats: event.output.stats,
                   },
@@ -707,34 +621,6 @@ export const makePracticeOverviewMachine = ({
                   : "Could not save the answer.",
             },
           }),
-        },
-      },
-      Revealed: {
-        on: {
-          refresh: {
-            target: "Loading",
-          },
-          submit: ({ context }) =>
-            context.nextItem === undefined
-              ? {
-                  target: "Loading",
-                  context: {
-                    answerVisible: false,
-                    hintVisible: false,
-                    lastResult: undefined,
-                  },
-                }
-              : {
-                  target: "Ready",
-                  context: {
-                    answerVisible: false,
-                    rating: undefined,
-                    currentItem: context.nextItem,
-                    hintVisible: false,
-                    lastResult: undefined,
-                    nextItem: undefined,
-                  },
-                },
         },
       },
       EmptyLibrary: {

@@ -1,7 +1,5 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Button } from "@base-ui/react/button";
-import { Input } from "@base-ui/react/input";
-import { Tooltip } from "@base-ui/react/tooltip";
 import { PracticeOverviewMachine } from "@jip/machines";
 import {
   FuriganaText,
@@ -12,15 +10,7 @@ import {
 import { Link, createFileRoute } from "@tanstack/react-router";
 import { useMachine, useSelector } from "@xstate/react";
 import { DateTime } from "effect";
-import {
-  ArrowLeft,
-  Check,
-  CircleCheck,
-  CircleX,
-  Lightbulb,
-  LoaderCircle,
-  RefreshCw,
-} from "lucide-react";
+import { ArrowLeft, CircleCheck, RefreshCw } from "lucide-react";
 import type { Actor } from "xstate";
 
 import { WordText } from "../components/word-text.tsx";
@@ -32,12 +22,6 @@ const practiceOverviewMachine =
     runtime: RuntimeClient,
   });
 
-const StageLabels = {
-  recognition: "Recognition",
-  meaningRecall: "Meaning recall",
-  contextRecall: "Context recall",
-} as const;
-
 export const Route = createFileRoute("/practice")({
   component: PracticeRoute,
 });
@@ -48,7 +32,6 @@ function PracticeRoute() {
   const isComplete = snapshot.value === "Complete";
   const isFailure = snapshot.value === "Failure";
   const isLoading = snapshot.value === "Loading";
-  const isRevealed = snapshot.value === "Revealed";
   const isSubmitting = snapshot.value === "Submitting";
 
   if (isLoading) {
@@ -129,13 +112,7 @@ function PracticeRoute() {
     );
   }
 
-  return (
-    <PracticeSession
-      actor={actor}
-      isRevealed={isRevealed}
-      isSubmitting={isSubmitting}
-    />
-  );
+  return <PracticeSession actor={actor} isSubmitting={isSubmitting} />;
 }
 
 function PracticeExampleSentence({
@@ -250,35 +227,20 @@ function ConfirmRatingButton({
 
 function PracticeSession({
   actor,
-  isRevealed,
   isSubmitting,
 }: {
   readonly actor: Actor<typeof practiceOverviewMachine>;
-  readonly isRevealed: boolean;
   readonly isSubmitting: boolean;
 }) {
   const currentItem = useSelector(
     actor,
     (snapshot) => snapshot.context.currentItem
   );
-  const currentResponse = useSelector(
-    actor,
-    (snapshot) => snapshot.context.currentResponse
-  );
-  const lastResult = useSelector(
-    actor,
-    (snapshot) => snapshot.context.lastResult
-  );
-  const hintVisible = useSelector(
-    actor,
-    (snapshot) => snapshot.context.hintVisible
-  );
   const answerVisible = useSelector(
     actor,
     (snapshot) => snapshot.context.answerVisible
   );
   const message = useSelector(actor, (snapshot) => snapshot.context.message);
-  const isShowingResult = isRevealed && lastResult !== undefined;
   const practiceMode =
     currentItem === undefined ? undefined : currentItem.state.stage;
   const ratingNow = Date.now();
@@ -391,8 +353,6 @@ function PracticeSession({
             : "previous stage"
           : "next stage",
   };
-  const ResultIcon = lastResult?.isCorrect === true ? CircleCheck : CircleX;
-
   return (
     <section className="relative h-[calc(100svh-1.5rem-max(1rem,env(safe-area-inset-bottom)))] min-h-0 min-w-0 overflow-hidden sm:h-[calc(100svh-2.5rem-max(1.5rem,env(safe-area-inset-bottom)))]">
       <Link
@@ -402,103 +362,76 @@ function PracticeSession({
       >
         <ArrowLeft aria-hidden="true" size={18} strokeWidth={2.5} />
       </Link>
-      <form
-        className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden pt-10 text-center sm:gap-5 sm:pt-0"
-        onSubmit={(event) => {
-          event.preventDefault();
-
-          if (practiceMode === "contextRecall") {
-            actor.trigger.submit();
-          }
-        }}
-      >
-        <div className="grid w-full shrink-0 content-start justify-items-center gap-3 px-1 pt-1">
-          {isShowingResult ? (
-            <div className="grid w-full gap-3">
-              <ResultIcon
-                aria-label={lastResult.isCorrect ? "Correct" : "Incorrect"}
-                className={`justify-self-center ${lastResult.isCorrect ? "text-sky" : "text-berry"}`}
-                role="img"
-                size={34}
-                strokeWidth={2.5}
-              />
-              {lastResult.promotedTo === undefined ? null : (
-                <p className="text-sm font-black text-teal">
-                  {StageLabels[lastResult.stage]} mastered ·{" "}
-                  {StageLabels[lastResult.promotedTo]} begins tomorrow
-                </p>
-              )}
-              {lastResult.demotedTo === undefined ? null : (
-                <p className="text-sm font-black text-gold">
-                  Returning to {StageLabels[lastResult.demotedTo]} tomorrow
-                </p>
-              )}
-              {lastResult.example === undefined ? (
-                <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                  <WordText text={lastResult.word.text} />
-                </h1>
-              ) : (
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl min-w-0 flex-col items-start gap-3 overflow-hidden pt-10 text-center sm:gap-5 sm:pt-0">
+        <div className="grid min-h-0 w-full flex-1 content-start justify-items-center gap-3 overflow-y-auto overscroll-contain px-1 pt-1">
+          {currentItem === undefined ? null : answerVisible ? (
+            practiceMode === "contextRecall" &&
+            currentItem.example !== undefined ? (
+              <div className="grid w-full gap-3">
                 <h1 className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
                   <PracticeExampleSentence
-                    answer={lastResult.example.answer}
-                    template={lastResult.example.template}
+                    answer={currentItem.example.answer}
+                    template={currentItem.example.template}
                     revealed
                   />
                 </h1>
-              )}
-              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
-                {lastResult.word.translation}
-              </p>
-              {lastResult.example === undefined ? null : (
                 <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
                   <PracticeExampleTranslation
-                    target={lastResult.example.translationTarget}
-                    template={lastResult.example.translationTemplate}
+                    target={currentItem.example.translationTarget}
+                    template={currentItem.example.translationTemplate}
                   />
                 </p>
-              )}
-              {lastResult.example?.note === undefined ? null : (
-                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-gold">
-                  {lastResult.example.note}
-                </p>
-              )}
-              {lastResult.word.description === undefined ? null : (
-                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
-                  {lastResult.word.description}
-                </p>
-              )}
-            </div>
-          ) : currentItem === undefined ? null : answerVisible ? (
-            <div className="grid w-full gap-3">
-              <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
-                <WordText text={currentItem.word.text} />
-              </h1>
-              <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
-                {currentItem.word.translation}
-              </p>
-              {currentItem.word.description === undefined ? null : (
-                <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
-                  {currentItem.word.description}
-                </p>
-              )}
-              {currentItem.example === undefined ? null : (
-                <div className="mt-2 grid gap-2">
-                  <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
-                    <PracticeExampleSentence
-                      answer={currentItem.example.answer}
-                      template={currentItem.example.template}
-                      revealed
-                    />
+                <div className="mt-1 grid gap-1">
+                  <p className="w-full wrap-break-word text-lg font-black text-sky sm:text-xl">
+                    <WordText text={currentItem.word.text} />
                   </p>
-                  <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
-                    <PracticeExampleTranslation
-                      target={currentItem.example.translationTarget}
-                      template={currentItem.example.translationTemplate}
-                    />
+                  <p className="w-full wrap-break-word text-sm font-semibold text-ink-muted sm:text-base">
+                    {currentItem.word.translation}
                   </p>
                 </div>
-              )}
-            </div>
+                {currentItem.example.note === undefined ? null : (
+                  <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-gold">
+                    {currentItem.example.note}
+                  </p>
+                )}
+                {currentItem.word.description === undefined ? null : (
+                  <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                    {currentItem.word.description}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid w-full gap-3">
+                <h1 className="w-full wrap-break-word text-4xl font-black leading-tight sm:text-7xl">
+                  <WordText text={currentItem.word.text} />
+                </h1>
+                <p className="w-full wrap-break-word text-lg font-normal leading-tight text-ink-muted sm:text-2xl">
+                  {currentItem.word.translation}
+                </p>
+                {currentItem.word.description === undefined ? null : (
+                  <p className="max-w-lg justify-self-center text-sm font-semibold leading-6 text-ink-muted">
+                    {currentItem.word.description}
+                  </p>
+                )}
+                {currentItem.example === undefined ? null : (
+                  <div className="mt-2 grid gap-2">
+                    <p className="w-full wrap-break-word text-xl font-normal leading-relaxed sm:text-3xl">
+                      <PracticeExampleSentence
+                        answer={currentItem.example.answer}
+                        template={currentItem.example.template}
+                        revealed
+                      />
+                    </p>
+                    <p className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted sm:text-base">
+                      <PracticeExampleTranslation
+                        target={currentItem.example.translationTarget}
+                        template={currentItem.example.translationTemplate}
+                      />
+                    </p>
+                  </div>
+                )}
+              </div>
+            )
           ) : practiceMode === "recognition" ? (
             <div className="grid w-full gap-3">
               <div className="text-xs font-black uppercase tracking-widest text-sky">
@@ -560,14 +493,6 @@ function PracticeSession({
                       template={currentItem.example.translationTemplate}
                     />
                   </p>
-                  {hintVisible ? (
-                    <p
-                      aria-live="polite"
-                      className="w-full wrap-break-word text-sm font-semibold leading-6 text-ink-muted"
-                    >
-                      {currentItem.word.description}
-                    </p>
-                  ) : null}
                 </>
               )}
             </div>
@@ -578,7 +503,7 @@ function PracticeSession({
             <span className="font-bold text-accent">{message}</span>
           )}
         </div>
-        {practiceMode !== "contextRecall" && !answerVisible ? (
+        {!answerVisible ? (
           <Button
             type="button"
             autoFocus
@@ -588,7 +513,7 @@ function PracticeSession({
               actor.trigger.reveal();
             }}
           >
-            Reveal
+            Reveal answer
           </Button>
         ) : answerVisible ? (
           <div className="mt-auto grid w-full shrink-0 grid-cols-2 gap-2 sm:grid-cols-4">
@@ -644,98 +569,8 @@ function PracticeSession({
               }}
             />
           </div>
-        ) : (
-          <div className="mt-auto flex w-full min-w-0 shrink-0 gap-2">
-            {currentItem?.example === undefined ||
-            currentItem.word.description === undefined ||
-            hintVisible ? null : (
-              <Tooltip.Root>
-                <Tooltip.Trigger
-                  render={
-                    <Button
-                      type="button"
-                      aria-label="Show hint"
-                      className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-md border border-line bg-panel text-ink-muted transition hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:opacity-60"
-                      disabled={isSubmitting}
-                      focusableWhenDisabled
-                      onClick={() => {
-                        actor.trigger.showHint();
-                      }}
-                    />
-                  }
-                >
-                  <Lightbulb aria-hidden="true" size={20} strokeWidth={2.5} />
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                  <Tooltip.Positioner sideOffset={8}>
-                    <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-                      Show hint
-                    </Tooltip.Popup>
-                  </Tooltip.Positioner>
-                </Tooltip.Portal>
-              </Tooltip.Root>
-            )}
-            <label className="sr-only" htmlFor="practice-response">
-              Japanese word
-            </label>
-            <Input
-              id="practice-response"
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect="off"
-              autoFocus
-              className="h-14 min-w-0 flex-1 rounded-md border border-line bg-field px-4 text-center text-xl font-bold outline-none transition placeholder:text-ink-muted/70 focus:border-ink-muted disabled:opacity-60"
-              disabled={isSubmitting}
-              placeholder="日本語"
-              spellCheck={false}
-              type="text"
-              value={currentResponse}
-              onValueChange={(response) => {
-                actor.trigger.changeResponse({ response });
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-                  return;
-                }
-
-                event.preventDefault();
-                actor.trigger.submit();
-              }}
-            />
-            <Tooltip.Root>
-              <Tooltip.Trigger
-                render={
-                  <Button
-                    type="submit"
-                    aria-label="Submit"
-                    className="inline-flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-action text-action-ink transition hover:bg-action-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky disabled:bg-field disabled:text-ink-muted"
-                    disabled={isSubmitting}
-                    focusableWhenDisabled
-                  />
-                }
-              >
-                {isSubmitting ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="animate-spin"
-                    size={20}
-                    strokeWidth={2.5}
-                  />
-                ) : (
-                  <Check aria-hidden="true" size={20} strokeWidth={2.5} />
-                )}
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Positioner sideOffset={8}>
-                  <Tooltip.Popup className="rounded-md border border-line bg-panel px-2 py-1 text-xs font-black text-ink shadow-[0_12px_35px_rgba(0,0,0,0.35)]">
-                    Submit
-                  </Tooltip.Popup>
-                </Tooltip.Positioner>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          </div>
-        )}
-      </form>
+        ) : null}
+      </div>
     </section>
   );
 }
